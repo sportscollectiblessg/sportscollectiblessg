@@ -273,7 +273,7 @@ function CardEditor({ initial, consignorId, onSaved, onCancel, onDeleted }) {
     setForm((prev) => ({
       ...prev,
       status: newStatus,
-      sale_mechanism: prev.status === "listed" || prev.status === "offer" ? prev.status : prev.sale_mechanism,
+      sale_mechanism: newStatus === "listed" || newStatus === "offer" ? newStatus : prev.sale_mechanism,
     }));
   };
 
@@ -645,7 +645,7 @@ function ConsignorPage() {
   const [consignor, setConsignor] = useState(undefined);
   const [cards, setCards] = useState([]);
   const [fxRate, setFxRate] = useState(1.29);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState("listed");
 
   useEffect(() => {
     (async () => {
@@ -667,7 +667,7 @@ function ConsignorPage() {
     </div>
   );
 
-  const filtered = filter === "all" ? cards : filter === "active" ? cards.filter((c) => c.status === "listed" || c.status === "offer") : cards.filter((c) => c.status === "sold" || c.status === "paid");
+  const filtered = cards.filter((c) => c.status === filter);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#141110" }}>
