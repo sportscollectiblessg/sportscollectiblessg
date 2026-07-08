@@ -176,12 +176,19 @@ function Field({ label, value, onChange, type = "text", textarea, placeholder })
 /* ---------------------------------------------------------
    Card Slab — shown to both owner and consignors
 --------------------------------------------------------- */
-function CardSlab({ card, fxRate, onEdit, editable }) {
+const RECEIPT_FIELD = { order_total: "receipt_order_total_url", order_earnings: "receipt_order_earnings_url" };
+const RECEIPT_LABEL = { order_total: "Order Total", order_earnings: "Order Earnings" };
+
+function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(t);
   }, []);
+
+  const [receiptModalKey, setReceiptModalKey] = useState(null); // 'order_total' | 'order_earnings' | 'total_earnings' | null
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [receiptError, setReceiptError] = useState("");
 
   const hasRealEnd = !!card.end_date;
   const estEnd = !hasRealEnd && card.start_date
@@ -195,16 +202,67 @@ function CardSlab({ card, fxRate, onEdit, editable }) {
   const startLabel = mechanism === "listed" ? "Start Bid" : mechanism === "offer" ? "Listed Price" : "Start Value";
   const endLabel = mechanism === "listed" ? "End Bid" : mechanism === "offer" ? "Offer Accepted" : "End Value";
 
+  const handleReceiptUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !receiptModalKey || receiptModalKey === "total_earnings") return;
+    setUploadingReceipt(true);
+    setReceiptError("");
+    try {
+      const url = await uploadImage(file, `receipts/${card.id}`);
+      const field = RECEIPT_FIELD[receiptModalKey];
+      const { error } = await supabase.from("cards").update({ [field]: url }).eq("id", card.id);
+      if (error) throw error;
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setReceiptError(err.message || "Upload failed.");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
+  const handleReceiptRemove = async () => {
+    if (!receiptModalKey || receiptModalKey === "total_earnings") return;
+    setUploadingReceipt(true);
+    setReceiptError("");
+    try {
+      const field = RECEIPT_FIELD[receiptModalKey];
+      const { error } = await supabase.from("cards").update({ [field]: null }).eq("id", card.id);
+      if (error) throw error;
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setReceiptError(err.message || "Remove failed.");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
+  const Box = ({ boxKey, label, value }) => (
+    <button
+      onClick={() => setReceiptModalKey(boxKey)}
+      className="rounded p-2 text-center"
+      style={{ backgroundColor: "#141110" }}
+    >
+      <div className="text-[8px] tracking-wide opacity-60 leading-tight flex items-center justify-center gap-1" style={{ color: "#FAF7F2" }}>
+        {label} <ImagePlus size={8} />
+      </div>
+      <div className="text-xs font-bold" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{value}</div>
+    </button>
+  );
+
+  const currentReceiptUrl = receiptModalKey && receiptModalKey !== "total_earnings" ? card[RECEIPT_FIELD[receiptModalKey]] : null;
+
   return (
     <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
       <FoilCorner />
-      <div className="flex gap-3 p-4 pt-6">
+      <div className="flex flex-wrap lg:flex-nowrap items-start lg:items-center gap-4 p-4 pt-6">
         {card.photo_url && (
-          <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 84, height: 118, objectFit: "cover", border: "1px solid #E3DFD6" }} />
+          <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
         )}
-        <div className="flex-1 min-w-0">
-          <h3 className="text-[15px] leading-snug font-semibold mb-3" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{card.description}</h3>
-          <div className="flex items-center justify-between mb-3">
+
+        <div className="min-w-0 lg:w-64 flex-shrink-0">
+          <h3 className="text-[14px] leading-snug font-semibold mb-1.5" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{card.description}</h3>
+          <div className="flex items-center gap-2 flex-wrap">
             <Stamp status={card.status} />
             {card.link && (
               <a href={card.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline" style={{ color: "#141110" }}>
@@ -212,36 +270,103 @@ function CardSlab({ card, fxRate, onEdit, editable }) {
               </a>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px] mb-3 pt-3" style={{ borderTop: "1px dashed #E3DFD6", fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
-            <div className="flex justify-between col-span-2"><span className="opacity-60">Start</span><span>{fmtDateTime(card.start_date)}</span></div>
-            <div className="flex justify-between col-span-2"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
-            <div className="flex justify-between col-span-2"><span className="opacity-60">Countdown</span><span style={countdown.ended && !hasRealEnd ? { color: "#CC0001" } : undefined}>{countdown.text}</span></div>
-            <div className="flex justify-between col-span-2"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(card.start_value)}</span></div>
-            <div className="flex justify-between col-span-2"><span className="opacity-60">{endLabel}</span><span>{card.end_value != null ? fmtUSD(card.end_value) : "In Progress"}</span></div>
-            <div className="flex justify-between col-span-2"><span className="opacity-60">Shipping</span><span>{hasValue(card.shipping) ? fmtUSD(card.shipping) : "—"}</span></div>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            <div className="rounded p-2 text-center" style={{ backgroundColor: "#141110" }}>
-              <div className="text-[8px] tracking-wide opacity-60 leading-tight" style={{ color: "#FAF7F2" }}>ORDER TOTAL</div>
-              <div className="text-xs font-bold" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{hasValue(card.order_total) ? fmtUSD(card.order_total) : "—"}</div>
-            </div>
-            <div className="rounded p-2 text-center" style={{ backgroundColor: "#141110" }}>
-              <div className="text-[8px] tracking-wide opacity-60 leading-tight" style={{ color: "#FAF7F2" }}>ORDER EARNINGS</div>
-              <div className="text-xs font-bold" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{hasValue(card.order_earnings) ? fmtUSD(card.order_earnings) : "—"}</div>
-            </div>
-            <div className="rounded p-2 text-center" style={{ backgroundColor: "#141110" }}>
-              <div className="text-[8px] tracking-wide opacity-60 leading-tight" style={{ color: "#FAF7F2" }}>TOTAL EARNINGS (SGD)</div>
-              <div className="text-xs font-bold" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{fmtSGD(computeTotalEarningsSGD(card, fxRate))}</div>
-            </div>
-          </div>
-          <div className="mt-2 text-[10px] text-right opacity-50" style={{ color: "#4A4636", fontFamily: "'Space Grotesk', sans-serif" }}>Updated {timeAgo(card.updated_at)}</div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
+          <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(card.start_date)}</span></div>
+          <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(card.start_value)}</span></div>
+          <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
+          <div className="flex justify-between gap-3"><span className="opacity-60">{endLabel}</span><span>{card.end_value != null ? fmtUSD(card.end_value) : "In Progress"}</span></div>
+          <div className="flex justify-between gap-3"><span className="opacity-60">Countdown</span><span style={countdown.ended && !hasRealEnd ? { color: "#CC0001" } : undefined}>{countdown.text}</span></div>
+          <div className="flex justify-between gap-3"><span className="opacity-60">Shipping</span><span>{hasValue(card.shipping) ? fmtUSD(card.shipping) : "—"}</span></div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-1.5 flex-shrink-0" style={{ width: 220 }}>
+          <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(card.order_total) ? fmtUSD(card.order_total) : "—"} />
+          <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(card.order_earnings) ? fmtUSD(card.order_earnings) : "—"} />
+          <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(card, fxRate))} />
+        </div>
+
+        <div className="flex flex-col items-end gap-1 ml-auto flex-shrink-0">
+          <div className="text-[10px] opacity-50 whitespace-nowrap" style={{ color: "#4A4636", fontFamily: "'Space Grotesk', sans-serif" }}>Updated {timeAgo(card.updated_at)}</div>
           {editable && (
-            <button onClick={() => onEdit(card)} className="mt-2 w-full text-[12px] font-semibold rounded py-1.5" style={{ border: "1px solid #141110", color: "#141110" }}>
+            <button onClick={() => onEdit(card)} className="text-[12px] font-semibold rounded px-3 py-1.5 whitespace-nowrap" style={{ border: "1px solid #141110", color: "#141110" }}>
               Edit card
             </button>
           )}
         </div>
       </div>
+
+      {receiptModalKey && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ backgroundColor: "rgba(20,17,16,0.85)" }}
+          onClick={() => setReceiptModalKey(null)}
+        >
+          <div
+            className="max-w-sm w-full rounded-lg p-5"
+            style={{ backgroundColor: "#FAF7F2" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2" style={{ color: "#141110", fontFamily: "'Roboto Slab', serif" }}>
+                <ImagePlus size={16} />
+                <span className="font-bold text-sm">
+                  {receiptModalKey === "total_earnings" ? "Total Earnings breakdown" : `${RECEIPT_LABEL[receiptModalKey]} receipt`}
+                </span>
+              </div>
+              <button onClick={() => setReceiptModalKey(null)}><X size={18} color="#141110" /></button>
+            </div>
+
+            {receiptModalKey === "total_earnings" ? (
+              <div className="text-xs" style={{ color: "#141110" }}>
+                <div className="flex justify-between py-1"><span className="opacity-60">Order Earnings</span><span>{hasValue(card.order_earnings) ? fmtUSD(card.order_earnings) : "—"}</span></div>
+                <div className="flex justify-between py-1" style={{ borderBottom: "1px solid #E3DFD6" }}><span className="opacity-60">Shipping</span><span>{hasValue(card.shipping) ? `−${fmtUSD(card.shipping)}` : "—"}</span></div>
+                <div className="flex justify-between py-1.5 font-bold" style={{ borderBottom: "1px solid #E3DFD6" }}>
+                  <span>Total Earnings (USD)</span>
+                  <span>{hasValue(card.order_earnings) && hasValue(card.shipping) ? fmtUSD(Number(card.order_earnings) - Number(card.shipping)) : "—"}</span>
+                </div>
+                <div className="flex justify-between py-1" style={{ borderBottom: "1px solid #E3DFD6" }}><span className="opacity-60">Current Rate</span><span>{fxRate}</span></div>
+                <div className="flex justify-between py-1.5 font-bold">
+                  <span>Total Earnings (SGD)</span>
+                  <span style={{ color: "#3FA34D" }}>{fmtSGD(computeTotalEarningsSGD(card, fxRate))}</span>
+                </div>
+                {(!hasValue(card.order_earnings) || !hasValue(card.shipping)) && (
+                  <p className="mt-2 opacity-50">Fill in Order Earnings and Shipping to calculate this.</p>
+                )}
+              </div>
+            ) : (
+              <>
+                {currentReceiptUrl ? (
+                  <img src={currentReceiptUrl} alt={`${RECEIPT_LABEL[receiptModalKey]} receipt`} className="w-full rounded border" style={{ borderColor: "#E3DFD6" }} />
+                ) : (
+                  <div className="rounded border-2 border-dashed flex flex-col items-center justify-center py-10 gap-2" style={{ borderColor: "#E3DFD6" }}>
+                    <ImagePlus size={28} color="#726C63" />
+                    <p className="text-xs text-center px-6" style={{ color: "#726C63" }}>
+                      {editable ? "No receipt uploaded yet." : "No receipt has been uploaded yet for this."}
+                    </p>
+                  </div>
+                )}
+                {editable && (
+                  <div className="flex gap-2 mt-3">
+                    <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold rounded py-2 cursor-pointer" style={{ border: "1px solid #141110", color: "#141110" }}>
+                      {uploadingReceipt ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                      {uploadingReceipt ? "Uploading…" : currentReceiptUrl ? "Replace receipt" : "Upload receipt"}
+                      <input type="file" accept="image/*" className="hidden" onChange={handleReceiptUpload} disabled={uploadingReceipt} />
+                    </label>
+                    {currentReceiptUrl && (
+                      <button onClick={handleReceiptRemove} disabled={uploadingReceipt} className="text-xs font-semibold rounded px-3" style={{ border: "1px solid #CC0001", color: "#CC0001" }}>
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )}
+                {receiptError && <p className="text-[11px] mt-2" style={{ color: "#CC0001" }}>{receiptError}</p>}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -423,13 +548,13 @@ function OwnerDashboard({ session }) {
 
   useEffect(() => { loadAll(); }, []);
 
-  useEffect(() => {
+  const refreshCards = async () => {
     if (!selected) { setCards([]); return; }
-    (async () => {
-      const { data } = await supabase.from("cards").select("*").eq("consignor_id", selected).order("created_at", { ascending: false });
-      setCards(data || []);
-    })();
-  }, [selected, editingCard]);
+    const { data } = await supabase.from("cards").select("*").eq("consignor_id", selected).order("created_at", { ascending: false });
+    setCards(data || []);
+  };
+
+  useEffect(() => { refreshCards(); }, [selected, editingCard]);
 
   // Auto-refresh FX rate once a day
   useEffect(() => {
@@ -486,7 +611,7 @@ function OwnerDashboard({ session }) {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#141110" }}>
-      <div className="max-w-5xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="text-[11px] tracking-[0.25em] opacity-50" style={{ color: "#FAF7F2" }}>OWNER VIEW</div>
@@ -495,15 +620,18 @@ function OwnerDashboard({ session }) {
           <button onClick={signOut} className="text-xs underline opacity-60" style={{ color: "#FAF7F2" }}>Sign out</button>
         </div>
 
-        <div className="flex items-center gap-3 mb-6 rounded-lg px-4 py-3 flex-wrap" style={{ backgroundColor: "#1F1A18" }}>
-          <span className="text-xs opacity-60" style={{ color: "#FAF7F2" }}>USD → SGD rate</span>
-          <input type="number" step="0.01" value={fxInput} onChange={(e) => setFxInput(e.target.value)} className="w-20 rounded px-2 py-1 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14" }} />
-          <button onClick={updateFxRate} className="text-xs font-semibold rounded px-3 py-1.5" style={{ backgroundColor: "#CC0001", color: "#FAF7F2" }}>Update</button>
-          <span className="text-[11px] opacity-40 ml-auto" style={{ color: "#FAF7F2" }}>set {timeAgo(fx.updatedAt)} · auto-refreshes daily on open</span>
-        </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-5">
-          <div className="rounded-lg p-3" style={{ backgroundColor: "#1F1A18" }}>
+          <div className="flex flex-col gap-5">
+            <div className="rounded-lg p-3" style={{ backgroundColor: "#1F1A18" }}>
+              <div className="text-xs opacity-60 mb-2" style={{ color: "#FAF7F2" }}>USD → SGD rate</div>
+              <div className="flex items-center gap-2 mb-2">
+                <input type="number" step="0.01" value={fxInput} onChange={(e) => setFxInput(e.target.value)} className="w-16 rounded px-2 py-1 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14" }} />
+                <button onClick={updateFxRate} className="text-xs font-semibold rounded px-2 py-1.5 flex-1" style={{ backgroundColor: "#CC0001", color: "#FAF7F2" }}>Update</button>
+              </div>
+              <div className="text-[10px] opacity-40" style={{ color: "#FAF7F2" }}>set {timeAgo(fx.updatedAt)} · auto-refreshes daily on open</div>
+            </div>
+
+            <div className="rounded-lg p-3" style={{ backgroundColor: "#1F1A18" }}>
             <div className="flex items-center justify-between mb-2 px-1">
               <span className="text-[11px] tracking-widest opacity-50" style={{ color: "#FAF7F2" }}>CONSIGNORS</span>
               <button onClick={() => setAdding(true)}><Plus size={16} color="#CC0001" /></button>
@@ -537,6 +665,7 @@ function OwnerDashboard({ session }) {
                 </button>
               ))}
             </div>
+            </div>
           </div>
 
           <div>
@@ -559,9 +688,9 @@ function OwnerDashboard({ session }) {
                 {filteredCards.length === 0 ? (
                   <div className="rounded-lg p-8 text-center text-sm opacity-50" style={{ backgroundColor: "#1F1A18", color: "#FAF7F2" }}>Nothing here yet.</div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-4">
                     {filteredCards.map((card) => (
-                      <CardSlab key={card.id} card={card} fxRate={fx.rate} editable onEdit={(c) => setEditingCard(c)} />
+                      <CardSlab key={card.id} card={card} fxRate={fx.rate} editable onEdit={(c) => setEditingCard(c)} onRefresh={refreshCards} />
                     ))}
                   </div>
                 )}
@@ -671,7 +800,7 @@ function ConsignorPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#141110" }}>
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="text-[11px] tracking-[0.25em] opacity-50 mb-1" style={{ color: "#FAF7F2" }}>SPORTS COLLECTIBLES SG</div>
         <h1 className="text-3xl font-extrabold mb-1" style={{ color: "#CC0001", fontFamily: "'Roboto Slab', serif" }}>{consignor.name}'s cards</h1>
         <p className="text-xs opacity-50 mb-5" style={{ color: "#FAF7F2" }}>Telegram @{consignor.telegram_username}</p>
@@ -701,7 +830,7 @@ function ConsignorPage() {
         {filtered.length === 0 ? (
           <div className="rounded-lg p-10 text-center text-sm opacity-50" style={{ backgroundColor: "#1F1A18", color: "#FAF7F2" }}>Nothing here yet.</div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-4">
             {filtered.map((card) => <CardSlab key={card.id} card={card} fxRate={fxRate} editable={false} />)}
           </div>
         )}
