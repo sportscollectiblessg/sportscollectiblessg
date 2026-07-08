@@ -250,38 +250,40 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
   const currentReceiptUrl = receiptModalKey && receiptModalKey !== "total_earnings" ? card[RECEIPT_FIELD[receiptModalKey]] : null;
 
   return (
-    <div className="card-slab relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
+    <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
       <div className="p-4">
-        <div className="flex items-center gap-4">
-          {card.photo_url && (
-            <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
-          )}
+        <div className="overflow-x-auto -mx-4 px-4" style={{ WebkitOverflowScrolling: "touch" }}>
+          <div className="flex items-center gap-4" style={{ width: "max-content" }}>
+            {card.photo_url && (
+              <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
+            )}
 
-          <div className="min-w-0 lg:w-64 flex-shrink-0">
-            <h3 className="text-[14px] leading-snug font-semibold mb-1.5" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{card.description}</h3>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Stamp status={card.status} />
-              {card.link && (
-                <a href={card.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline" style={{ color: "#141110" }}>
-                  View listing <ExternalLink size={11} />
-                </a>
-              )}
+            <div className="flex-shrink-0" style={{ width: 256 }}>
+              <h3 className="text-[14px] leading-snug font-semibold mb-1.5" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{card.description}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Stamp status={card.status} />
+                {card.link && (
+                  <a href={card.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline" style={{ color: "#141110" }}>
+                    View listing <ExternalLink size={11} />
+                  </a>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
-            <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(card.start_date)}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(card.start_value)}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">{endLabel}</span><span>{card.end_value != null ? fmtUSD(card.end_value) : "In Progress"}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">Countdown</span><span style={countdown.ended && !hasRealEnd ? { color: "#CC0001" } : undefined}>{countdown.text}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">Shipping</span><span>{hasValue(card.shipping) ? fmtUSD(card.shipping) : "—"}</span></div>
-          </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
+              <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(card.start_date)}</span></div>
+              <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(card.start_value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
+              <div className="flex justify-between gap-3"><span className="opacity-60">{endLabel}</span><span>{card.end_value != null ? fmtUSD(card.end_value) : "In Progress"}</span></div>
+              <div className="flex justify-between gap-3"><span className="opacity-60">Countdown</span><span style={countdown.ended && !hasRealEnd ? { color: "#CC0001" } : undefined}>{countdown.text}</span></div>
+              <div className="flex justify-between gap-3"><span className="opacity-60">Shipping</span><span>{hasValue(card.shipping) ? fmtUSD(card.shipping) : "—"}</span></div>
+            </div>
 
-          <div className="grid grid-cols-3 gap-1.5 flex-shrink-0 ml-auto" style={{ width: 220 }}>
-            <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(card.order_total) ? fmtUSD(card.order_total) : "—"} />
-            <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(card.order_earnings) ? fmtUSD(card.order_earnings) : "—"} />
-            <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(card, fxRate))} />
+            <div className="grid grid-cols-3 gap-1.5 flex-shrink-0" style={{ width: 220 }}>
+              <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(card.order_total) ? fmtUSD(card.order_total) : "—"} />
+              <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(card.order_earnings) ? fmtUSD(card.order_earnings) : "—"} />
+              <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(card, fxRate))} />
+            </div>
           </div>
         </div>
 
