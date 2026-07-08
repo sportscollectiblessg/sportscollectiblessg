@@ -156,9 +156,6 @@ function Stamp({ status }) {
   );
 }
 
-function FoilCorner() {
-  return <div aria-hidden className="absolute top-0 right-0 w-10 h-10" style={{ background: "linear-gradient(135deg, transparent 50%, #CC0001 50%)", opacity: 0.9 }} />;
-}
 
 function Field({ label, value, onChange, type = "text", textarea, placeholder }) {
   return (
@@ -255,7 +252,7 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
   return (
     <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
       <FoilCorner />
-      <div className="flex flex-wrap lg:flex-nowrap items-start lg:items-center gap-4 p-4 pt-6">
+      <div className="flex flex-wrap lg:flex-nowrap items-start lg:items-center gap-4 p-4">
         {card.photo_url && (
           <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
         )}
@@ -620,7 +617,7 @@ function OwnerDashboard({ session }) {
           <button onClick={signOut} className="text-xs underline opacity-60" style={{ color: "#FAF7F2" }}>Sign out</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-[170px_1fr] gap-5">
           <div className="flex flex-col gap-5">
             <div className="rounded-lg p-3" style={{ backgroundColor: "#1F1A18" }}>
               <div className="text-xs opacity-60 mb-2" style={{ color: "#FAF7F2" }}>USD → SGD rate</div>
