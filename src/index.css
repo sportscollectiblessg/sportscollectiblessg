@@ -6,3 +6,16 @@ body {
   margin: 0;
   background-color: #141110;
 }
+
+/* Keep the horizontal card layout on phones instead of stacking —
+   just shrink the whole card down to fit. */
+@media (max-width: 480px) {
+  .card-slab { zoom: 0.4; }
+}
+@media (min-width: 481px) and (max-width: 767px) {
+  .card-slab { zoom: 0.58; }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .card-slab { zoom: 0.8; }
+}
+

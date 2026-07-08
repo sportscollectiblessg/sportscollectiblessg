@@ -250,9 +250,9 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
   const currentReceiptUrl = receiptModalKey && receiptModalKey !== "total_earnings" ? card[RECEIPT_FIELD[receiptModalKey]] : null;
 
   return (
-    <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
+    <div className="card-slab relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
       <div className="p-4">
-        <div className="flex flex-wrap items-start gap-4">
+        <div className="flex items-center gap-4">
           {card.photo_url && (
             <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
           )}
