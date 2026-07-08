@@ -285,6 +285,7 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
               <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(card.order_earnings) ? fmtUSD(card.order_earnings) : "—"} />
               <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(card, fxRate))} />
             </div>
+            <div aria-hidden className="flex-shrink-0 sm:hidden" style={{ width: 28 }} />
             </div>
           </div>
 
