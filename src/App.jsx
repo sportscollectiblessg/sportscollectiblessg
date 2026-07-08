@@ -251,8 +251,6 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
 
   return (
     <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
-     
-      <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
       <div className="p-4">
         <div className="flex flex-wrap items-start gap-4">
           {card.photo_url && (
