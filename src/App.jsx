@@ -251,7 +251,7 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
 
   return (
     <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
-      <FoilCorner />
+     
       <div className="flex flex-wrap lg:flex-nowrap items-start lg:items-center gap-4 p-4">
         {card.photo_url && (
           <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
