@@ -7,3 +7,18 @@ body {
   background-color: #141110;
 }
 
+/* Black scrollbar for the horizontally-scrollable card strip */
+.card-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #141110 transparent;
+}
+.card-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.card-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.card-scroll::-webkit-scrollbar-thumb {
+  background-color: #141110;
+  border-radius: 4px;
+}

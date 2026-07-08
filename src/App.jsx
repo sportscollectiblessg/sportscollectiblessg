@@ -252,10 +252,11 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
   return (
     <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
       <div className="p-4">
-        <div className="overflow-x-auto -mx-4 px-4" style={{ WebkitOverflowScrolling: "touch" }}>
-          <div className="flex items-center gap-4" style={{ width: "max-content" }}>
-            {card.photo_url && (
-              <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
+        <div className="relative">
+          <div className="overflow-x-auto card-scroll -mx-4 px-4" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div className="flex items-center gap-4" style={{ width: "max-content" }}>
+              {card.photo_url && (
+                <img src={card.photo_url} alt={card.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
             )}
 
             <div className="flex-shrink-0" style={{ width: 256 }}>
@@ -284,6 +285,14 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
               <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(card.order_earnings) ? fmtUSD(card.order_earnings) : "—"} />
               <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(card, fxRate))} />
             </div>
+            </div>
+          </div>
+
+          <div
+            className="pointer-events-none absolute top-0 bottom-0 right-0 flex items-center justify-end sm:hidden"
+            style={{ width: 36, background: "linear-gradient(to right, transparent, #FAF7F2 65%)" }}
+          >
+            <ChevronRight size={16} color="#726C63" />
           </div>
         </div>
 
