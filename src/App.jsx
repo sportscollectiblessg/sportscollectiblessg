@@ -401,6 +401,39 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
    Order Slab — a group of cards bought together in one order,
    sharing one Order Total / Order Earnings / Shipping / status.
 --------------------------------------------------------- */
+function ItemBlock({ item, editable, onEditItem, variant = "compact" }) {
+  const mechanism = item.sale_mechanism || item.status;
+  const priceLabel = mechanism === "listed" ? "Start Bid" : mechanism === "offer" ? "Listed Price" : "Value";
+  const priceValue = item.end_value != null ? fmtUSD(item.end_value) : item.start_value != null ? fmtUSD(item.start_value) : "—";
+  const isRow = variant === "row";
+
+  return (
+    <div className={isRow ? "flex items-center gap-3" : "flex items-center gap-2 flex-shrink-0"} style={isRow ? undefined : { width: 220 }}>
+      {item.photo_url && (
+        <img src={item.photo_url} alt={item.description} className="flex-shrink-0 rounded" style={{ width: isRow ? 56 : 44, height: isRow ? 78 : 60, objectFit: "cover", border: "1px solid #E3DFD6" }} />
+      )}
+      <div className="min-w-0">
+        <p className={isRow ? "text-[13px] leading-snug font-semibold mb-1" : "text-[11px] leading-snug font-semibold mb-0.5"} style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{item.description}</p>
+        <div className={isRow ? "flex items-center gap-1.5 text-[11px] mb-1" : "flex items-center gap-1.5 text-[10px]"} style={{ color: "#4A4636", fontFamily: "'Space Mono', monospace" }}>
+          <span className="opacity-60">{priceLabel}</span><span>{priceValue}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {item.link && (
+            <a href={item.link} target="_blank" rel="noopener noreferrer" className={isRow ? "inline-flex items-center gap-1 text-[11px] font-medium hover:underline" : "inline-flex items-center gap-1 text-[10px] font-medium hover:underline"} style={{ color: "#141110" }}>
+              {isRow ? "View listing" : "View"} <ExternalLink size={isRow ? 11 : 10} />
+            </a>
+          )}
+          {editable && (
+            <button onClick={() => onEditItem(item)} className={isRow ? "text-[11px] font-medium hover:underline" : "text-[10px] font-medium hover:underline"} style={{ color: "#726C63" }}>
+              Edit
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderSlab({ order, items, fxRate, onEditOrder, onEditItem, onAddItem, editable, onRefresh }) {
   const [receiptModalKey, setReceiptModalKey] = useState(null); // 'order_total' | 'order_earnings' | 'total_earnings' | null
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
@@ -469,36 +502,7 @@ function OrderSlab({ order, items, fxRate, onEditOrder, onEditItem, onAddItem, e
         <div className="relative">
           <div className="overflow-x-auto card-scroll -mx-4 px-4" style={{ WebkitOverflowScrolling: "touch" }}>
             <div className="flex items-center gap-4" style={{ width: "max-content" }}>
-              {items.map((item) => {
-                const mechanism = item.sale_mechanism || item.status;
-                const priceLabel = mechanism === "listed" ? "Start Bid" : mechanism === "offer" ? "Listed Price" : "Value";
-                const priceValue = item.end_value != null ? fmtUSD(item.end_value) : item.start_value != null ? fmtUSD(item.start_value) : "—";
-                return (
-                  <div key={item.id} className="flex items-center gap-2 flex-shrink-0" style={{ width: 220 }}>
-                    {item.photo_url && (
-                      <img src={item.photo_url} alt={item.description} className="flex-shrink-0 rounded" style={{ width: 44, height: 60, objectFit: "cover", border: "1px solid #E3DFD6" }} />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-[11px] leading-snug font-semibold mb-0.5" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{item.description}</p>
-                      <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "#4A4636", fontFamily: "'Space Mono', monospace" }}>
-                        <span className="opacity-60">{priceLabel}</span><span>{priceValue}</span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {item.link && (
-                          <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-medium hover:underline" style={{ color: "#141110" }}>
-                            View <ExternalLink size={10} />
-                          </a>
-                        )}
-                        {editable && (
-                          <button onClick={() => onEditItem(item)} className="text-[10px] font-medium hover:underline" style={{ color: "#726C63" }}>
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              <ItemBlock item={items[0]} editable={editable} onEditItem={onEditItem} />
 
               <div className="grid grid-cols-3 gap-1.5 flex-shrink-0" style={{ width: 220 }}>
                 <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(order.order_total) ? fmtUSD(order.order_total) : "—"} />
@@ -517,13 +521,19 @@ function OrderSlab({ order, items, fxRate, onEditOrder, onEditItem, onAddItem, e
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 mt-3">
+        {items.slice(1).map((item) => (
+          <div key={item.id} className="pt-3 mt-3" style={{ borderTop: "1px solid #E3DFD6" }}>
+            <ItemBlock item={item} editable={editable} onEditItem={onEditItem} variant="row" />
+          </div>
+        ))}
+
+        <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
           <div className="text-[11px]" style={{ color: "#4A4636" }}>
             <span className="opacity-60">Shipping</span> <span style={{ fontFamily: "'Space Mono', monospace" }}>{hasValue(order.shipping) ? fmtUSD(order.shipping) : "—"}</span>
           </div>
           {editable && (
-            <div className="flex items-center gap-3">
-              <button onClick={() => onAddItem(order)} className="text-[12px] font-semibold hover:underline" style={{ color: "#141110" }}>
+            <div className="flex items-center gap-3 flex-wrap justify-end ml-auto">
+              <button onClick={() => onAddItem(order)} className="text-[12px] font-semibold hover:underline whitespace-nowrap" style={{ color: "#141110" }}>
                 + Add card
               </button>
               <div className="text-[10px] opacity-50 whitespace-nowrap" style={{ color: "#4A4636", fontFamily: "'Space Grotesk', sans-serif" }}>Updated {timeAgo(order.updated_at)}</div>
