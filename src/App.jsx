@@ -134,6 +134,22 @@ const FILTER_TABS = [
   { key: "paid", label: "Payout Done" },
 ];
 
+// Combine standalone cards + grouped orders into one sorted, filterable list.
+function buildListingList(cards, orders) {
+  const standalone = cards.filter((c) => !c.order_id);
+  const grouped = orders
+    .map((o) => ({ order: o, items: cards.filter((c) => c.order_id === o.id) }))
+    .filter((g) => g.items.length > 0);
+
+  const combined = [
+    ...standalone.map((c) => ({ type: "single", key: c.id, createdAt: c.created_at, status: c.status, card: c })),
+    ...grouped.map((g) => ({ type: "group", key: g.order.id, createdAt: g.order.created_at, status: g.order.status, order: g.order, items: g.items })),
+  ];
+  combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return combined;
+}
+
+
 /* ---------------------------------------------------------
    Small UI atoms
 --------------------------------------------------------- */
@@ -382,135 +398,444 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
 }
 
 /* ---------------------------------------------------------
+   Order Slab — a group of cards bought together in one order,
+   sharing one Order Total / Order Earnings / Shipping / status.
+--------------------------------------------------------- */
+function OrderSlab({ order, items, fxRate, onEditOrder, onEditItem, onAddItem, editable, onRefresh }) {
+  const [receiptModalKey, setReceiptModalKey] = useState(null); // 'order_total' | 'order_earnings' | 'total_earnings' | null
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [receiptError, setReceiptError] = useState("");
+
+  const handleReceiptUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !receiptModalKey || receiptModalKey === "total_earnings") return;
+    setUploadingReceipt(true);
+    setReceiptError("");
+    try {
+      const url = await uploadImage(file, `receipts/${order.id}`);
+      const field = RECEIPT_FIELD[receiptModalKey];
+      const { error } = await supabase.from("orders").update({ [field]: url }).eq("id", order.id);
+      if (error) throw error;
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setReceiptError(err.message || "Upload failed.");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
+  const handleReceiptRemove = async () => {
+    if (!receiptModalKey || receiptModalKey === "total_earnings") return;
+    setUploadingReceipt(true);
+    setReceiptError("");
+    try {
+      const field = RECEIPT_FIELD[receiptModalKey];
+      const { error } = await supabase.from("orders").update({ [field]: null }).eq("id", order.id);
+      if (error) throw error;
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setReceiptError(err.message || "Remove failed.");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
+  const Box = ({ boxKey, label, value }) => (
+    <button
+      onClick={() => setReceiptModalKey(boxKey)}
+      className="rounded p-2 text-center"
+      style={{ backgroundColor: "#141110" }}
+    >
+      <div className="text-[8px] tracking-wide opacity-60 leading-tight flex items-center justify-center gap-1" style={{ color: "#FAF7F2" }}>
+        {label} <ImagePlus size={8} />
+      </div>
+      <div className="text-xs font-bold" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{value}</div>
+    </button>
+  );
+
+  const currentReceiptUrl = receiptModalKey && receiptModalKey !== "total_earnings" ? order[RECEIPT_FIELD[receiptModalKey]] : null;
+
+  return (
+    <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6", boxShadow: "0 8px 24px -8px rgba(0,0,0,0.5)" }}>
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] tracking-widest opacity-50 font-semibold" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>
+            {items.length} CARDS · ONE ORDER
+          </span>
+          <Stamp status={order.status} />
+        </div>
+
+        <div className="relative">
+          <div className="overflow-x-auto card-scroll -mx-4 px-4" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div className="flex items-center gap-4" style={{ width: "max-content" }}>
+              {items.map((item) => {
+                const mechanism = item.sale_mechanism || item.status;
+                const priceLabel = mechanism === "listed" ? "Start Bid" : mechanism === "offer" ? "Listed Price" : "Value";
+                const priceValue = item.end_value != null ? fmtUSD(item.end_value) : item.start_value != null ? fmtUSD(item.start_value) : "—";
+                return (
+                  <div key={item.id} className="flex items-center gap-2 flex-shrink-0" style={{ width: 220 }}>
+                    {item.photo_url && (
+                      <img src={item.photo_url} alt={item.description} className="flex-shrink-0 rounded" style={{ width: 44, height: 60, objectFit: "cover", border: "1px solid #E3DFD6" }} />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[11px] leading-snug font-semibold mb-0.5" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{item.description}</p>
+                      <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "#4A4636", fontFamily: "'Space Mono', monospace" }}>
+                        <span className="opacity-60">{priceLabel}</span><span>{priceValue}</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {item.link && (
+                          <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-medium hover:underline" style={{ color: "#141110" }}>
+                            View <ExternalLink size={10} />
+                          </a>
+                        )}
+                        {editable && (
+                          <button onClick={() => onEditItem(item)} className="text-[10px] font-medium hover:underline" style={{ color: "#726C63" }}>
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="grid grid-cols-3 gap-1.5 flex-shrink-0" style={{ width: 220 }}>
+                <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(order.order_total) ? fmtUSD(order.order_total) : "—"} />
+                <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(order.order_earnings) ? fmtUSD(order.order_earnings) : "—"} />
+                <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(order, fxRate))} />
+              </div>
+              <div aria-hidden className="flex-shrink-0 sm:hidden" style={{ width: 28 }} />
+            </div>
+          </div>
+
+          <div
+            className="pointer-events-none absolute top-0 bottom-0 right-0 flex items-center justify-end sm:hidden"
+            style={{ width: 36, background: "linear-gradient(to right, transparent, #FAF7F2 65%)" }}
+          >
+            <ChevronRight size={16} color="#726C63" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 mt-3">
+          <div className="text-[11px]" style={{ color: "#4A4636" }}>
+            <span className="opacity-60">Shipping</span> <span style={{ fontFamily: "'Space Mono', monospace" }}>{hasValue(order.shipping) ? fmtUSD(order.shipping) : "—"}</span>
+          </div>
+          {editable && (
+            <div className="flex items-center gap-3">
+              <button onClick={() => onAddItem(order)} className="text-[12px] font-semibold hover:underline" style={{ color: "#141110" }}>
+                + Add card
+              </button>
+              <div className="text-[10px] opacity-50 whitespace-nowrap" style={{ color: "#4A4636", fontFamily: "'Space Grotesk', sans-serif" }}>Updated {timeAgo(order.updated_at)}</div>
+              <button onClick={() => onEditOrder(order)} className="text-[12px] font-semibold rounded px-3 py-1.5 whitespace-nowrap" style={{ border: "1px solid #141110", color: "#141110" }}>
+                Edit order
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {receiptModalKey && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ backgroundColor: "rgba(20,17,16,0.85)" }}
+          onClick={() => setReceiptModalKey(null)}
+        >
+          <div
+            className="max-w-sm w-full rounded-lg p-5"
+            style={{ backgroundColor: "#FAF7F2" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2" style={{ color: "#141110", fontFamily: "'Roboto Slab', serif" }}>
+                <ImagePlus size={16} />
+                <span className="font-bold text-sm">
+                  {receiptModalKey === "total_earnings" ? "Total Earnings breakdown" : `${RECEIPT_LABEL[receiptModalKey]} receipt`}
+                </span>
+              </div>
+              <button onClick={() => setReceiptModalKey(null)}><X size={18} color="#141110" /></button>
+            </div>
+
+            {receiptModalKey === "total_earnings" ? (
+              <div className="text-xs" style={{ color: "#141110" }}>
+                <div className="flex justify-between py-1"><span className="opacity-60">Order Earnings</span><span>{hasValue(order.order_earnings) ? fmtUSD(order.order_earnings) : "—"}</span></div>
+                <div className="flex justify-between py-1" style={{ borderBottom: "1px solid #E3DFD6" }}><span className="opacity-60">Shipping</span><span>{hasValue(order.shipping) ? `−${fmtUSD(order.shipping)}` : "—"}</span></div>
+                <div className="flex justify-between py-1.5 font-bold" style={{ borderBottom: "1px solid #E3DFD6" }}>
+                  <span>Total Earnings (USD)</span>
+                  <span>{hasValue(order.order_earnings) && hasValue(order.shipping) ? fmtUSD(Number(order.order_earnings) - Number(order.shipping)) : "—"}</span>
+                </div>
+                <div className="flex justify-between py-1" style={{ borderBottom: "1px solid #E3DFD6" }}><span className="opacity-60">Current Rate</span><span>{fxRate}</span></div>
+                <div className="flex justify-between py-1.5 font-bold">
+                  <span>Total Earnings (SGD)</span>
+                  <span style={{ color: "#3FA34D" }}>{fmtSGD(computeTotalEarningsSGD(order, fxRate))}</span>
+                </div>
+                {(!hasValue(order.order_earnings) || !hasValue(order.shipping)) && (
+                  <p className="mt-2 opacity-50">Fill in Order Earnings and Shipping to calculate this.</p>
+                )}
+              </div>
+            ) : (
+              <>
+                {currentReceiptUrl ? (
+                  <img src={currentReceiptUrl} alt={`${RECEIPT_LABEL[receiptModalKey]} receipt`} className="w-full rounded border" style={{ borderColor: "#E3DFD6" }} />
+                ) : (
+                  <div className="rounded border-2 border-dashed flex flex-col items-center justify-center py-10 gap-2" style={{ borderColor: "#E3DFD6" }}>
+                    <ImagePlus size={28} color="#726C63" />
+                    <p className="text-xs text-center px-6" style={{ color: "#726C63" }}>
+                      {editable ? "No receipt uploaded yet." : "No receipt has been uploaded yet for this."}
+                    </p>
+                  </div>
+                )}
+                {editable && (
+                  <div className="flex gap-2 mt-3">
+                    <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold rounded py-2 cursor-pointer" style={{ border: "1px solid #141110", color: "#141110" }}>
+                      {uploadingReceipt ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                      {uploadingReceipt ? "Uploading…" : currentReceiptUrl ? "Replace receipt" : "Upload receipt"}
+                      <input type="file" accept="image/*" className="hidden" onChange={handleReceiptUpload} disabled={uploadingReceipt} />
+                    </label>
+                    {currentReceiptUrl && (
+                      <button onClick={handleReceiptRemove} disabled={uploadingReceipt} className="text-xs font-semibold rounded px-3" style={{ border: "1px solid #CC0001", color: "#CC0001" }}>
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )}
+                {receiptError && <p className="text-[11px] mt-2" style={{ color: "#CC0001" }}>{receiptError}</p>}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
    Card editor (owner only)
 --------------------------------------------------------- */
-function CardEditor({ initial, consignorId, onSaved, onCancel, onDeleted }) {
-  const [form, setForm] = useState(
-    initial || {
-      link: "", description: "", status: "listed", sale_mechanism: null,
-      start_date: "", start_value: "", end_date: "", end_value: "",
-      order_total: "", order_earnings: "", shipping: "", photo_url: null,
-    }
-  );
+function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDeleted }) {
+  const blankItem = () => ({ link: "", description: "", photo_url: null, start_date: "", start_value: "", end_date: "", end_value: "" });
+
+  const isGroupItemEdit = !!(initial && initial.order_id);
+  const isQuickAdd = !initial && !!forOrder;
+  const isTrimmed = isGroupItemEdit || isQuickAdd; // no status/financial fields shown
+
+  const [items, setItems] = useState(initial ? [{ ...initial }] : [blankItem()]);
+  const [shared, setShared] = useState({
+    status: initial?.status || "listed",
+    sale_mechanism: initial?.sale_mechanism || null,
+    order_total: initial?.order_total ?? "",
+    order_earnings: initial?.order_earnings ?? "",
+    shipping: initial?.shipping ?? "",
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingPhotoIdx, setUploadingPhotoIdx] = useState(null);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
 
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const updateItem = (idx, key, value) => {
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [key]: value } : it)));
+  };
+  const addItem = () => setItems((prev) => [...prev, blankItem()]);
+  const removeItem = (idx) => setItems((prev) => prev.filter((_, i) => i !== idx));
 
   const handleStatusChange = (e) => {
     const newStatus = e.target.value;
-    setForm((prev) => ({
+    setShared((prev) => ({
       ...prev,
       status: newStatus,
       sale_mechanism: newStatus === "listed" || newStatus === "offer" ? newStatus : prev.sale_mechanism,
     }));
   };
 
-  const handlePhotoUpload = async (e) => {
+  const handlePhotoUpload = (idx) => async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    setUploadingPhoto(true);
+    setUploadingPhotoIdx(idx);
     setError("");
     try {
       const url = await uploadImage(file, consignorId);
-      setForm((prev) => ({ ...prev, photo_url: url }));
+      updateItem(idx, "photo_url", url);
     } catch (err) {
       setError(err.message || "Photo upload failed.");
     } finally {
-      setUploadingPhoto(false);
+      setUploadingPhotoIdx(null);
     }
   };
+
+  const itemPayload = (it) => ({
+    link: it.link, description: it.description,
+    start_date: it.start_date || null, start_value: it.start_value === "" ? null : it.start_value,
+    end_date: it.end_date || null, end_value: it.end_value === "" ? null : it.end_value,
+    photo_url: it.photo_url,
+  });
 
   const handleSave = async () => {
     setSaving(true);
     setError("");
-    const payload = {
-      consignor_id: consignorId,
-      link: form.link, description: form.description, status: form.status,
-      sale_mechanism: form.sale_mechanism,
-      start_date: form.start_date || null, start_value: form.start_value === "" ? null : form.start_value,
-      end_date: form.end_date || null, end_value: form.end_value === "" ? null : form.end_value,
-      order_total: form.order_total === "" ? null : form.order_total,
-      order_earnings: form.order_earnings === "" ? null : form.order_earnings,
-      shipping: form.shipping === "" ? null : form.shipping,
-      photo_url: form.photo_url,
-      updated_at: new Date().toISOString(),
-    };
-    const result = initial
-      ? await supabase.from("cards").update(payload).eq("id", initial.id)
-      : await supabase.from("cards").insert(payload);
-    setSaving(false);
-    if (result.error) { setError(result.error.message); return; }
-    onSaved();
+    try {
+      if (isGroupItemEdit) {
+        const { error: err } = await supabase.from("cards").update({ ...itemPayload(items[0]), updated_at: new Date().toISOString() }).eq("id", initial.id);
+        if (err) throw err;
+      } else if (isQuickAdd) {
+        const { error: err } = await supabase.from("cards").insert({
+          ...itemPayload(items[0]),
+          consignor_id: consignorId,
+          order_id: forOrder.id,
+          status: forOrder.status,
+          sale_mechanism: forOrder.sale_mechanism ?? null,
+        });
+        if (err) throw err;
+      } else if (initial) {
+        const { error: err } = await supabase.from("cards").update({
+          ...itemPayload(items[0]),
+          consignor_id: consignorId,
+          status: shared.status,
+          sale_mechanism: shared.sale_mechanism,
+          order_total: shared.order_total === "" ? null : shared.order_total,
+          order_earnings: shared.order_earnings === "" ? null : shared.order_earnings,
+          shipping: shared.shipping === "" ? null : shared.shipping,
+          updated_at: new Date().toISOString(),
+        }).eq("id", initial.id);
+        if (err) throw err;
+      } else if (items.length === 1) {
+        const { error: err } = await supabase.from("cards").insert({
+          ...itemPayload(items[0]),
+          consignor_id: consignorId,
+          status: shared.status,
+          sale_mechanism: shared.sale_mechanism,
+          order_total: shared.order_total === "" ? null : shared.order_total,
+          order_earnings: shared.order_earnings === "" ? null : shared.order_earnings,
+          shipping: shared.shipping === "" ? null : shared.shipping,
+        });
+        if (err) throw err;
+      } else {
+        const { data: orderRow, error: orderErr } = await supabase.from("orders").insert({
+          consignor_id: consignorId,
+          status: shared.status,
+          order_total: shared.order_total === "" ? null : shared.order_total,
+          order_earnings: shared.order_earnings === "" ? null : shared.order_earnings,
+          shipping: shared.shipping === "" ? null : shared.shipping,
+        }).select().single();
+        if (orderErr) throw orderErr;
+
+        const rows = items.map((it) => ({
+          ...itemPayload(it),
+          consignor_id: consignorId,
+          order_id: orderRow.id,
+          status: shared.status,
+          sale_mechanism: shared.sale_mechanism,
+        }));
+        const { error: cardsErr } = await supabase.from("cards").insert(rows);
+        if (cardsErr) throw cardsErr;
+      }
+      onSaved();
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async () => {
     if (!initial) return;
     setSaving(true);
-    const { error } = await supabase.from("cards").delete().eq("id", initial.id);
+    const orderIdToCheck = initial.order_id;
+    const { error: err } = await supabase.from("cards").delete().eq("id", initial.id);
+    if (err) { setSaving(false); setError(err.message); return; }
+    if (orderIdToCheck) {
+      const { data: remaining } = await supabase.from("cards").select("id").eq("order_id", orderIdToCheck);
+      if (!remaining || remaining.length === 0) {
+        await supabase.from("orders").delete().eq("id", orderIdToCheck);
+      }
+    }
     setSaving(false);
-    if (error) { setError(error.message); return; }
     onDeleted();
   };
+
+  const title = isGroupItemEdit ? "Edit card" : isQuickAdd ? "Add card to order" : initial ? "Edit card" : "Add card";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" style={{ backgroundColor: "rgba(20,17,16,0.85)" }}>
       <div className="w-full sm:max-w-md rounded-t-xl sm:rounded-xl p-5 overflow-y-auto" style={{ backgroundColor: "#1F1A18", maxHeight: "90vh" }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold" style={{ color: "#FAF7F2", fontFamily: "'Roboto Slab', serif" }}>{initial ? "Edit card" : "Add card"}</h3>
+          <h3 className="text-base font-bold" style={{ color: "#FAF7F2", fontFamily: "'Roboto Slab', serif" }}>{title}</h3>
           <button onClick={onCancel}><X size={20} color="#FAF7F2" /></button>
         </div>
-        <div className="space-y-3">
-          <Field label="eBay link" value={form.link} onChange={set("link")} placeholder="https://www.ebay.com/itm/..." />
-          <Field label="Card description" value={form.description} onChange={set("description")} textarea />
-          <div>
-            <label className="text-[11px] opacity-60 block mb-1" style={{ color: "#FAF7F2" }}>Status</label>
-            <select value={form.status} onChange={handleStatusChange} className="w-full rounded px-3 py-2 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14" }}>
-              <option value="listed">In Auction</option>
-              <option value="offer">Best Offer</option>
-              <option value="sold">Buyer Paid</option>
-              <option value="paid">Payout Done</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Start date/time" value={form.start_date} onChange={set("start_date")} type="datetime-local" />
-            <Field label="Start value (USD)" value={form.start_value} onChange={set("start_value")} type="number" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="End date/time" value={form.end_date} onChange={set("end_date")} type="datetime-local" />
-            <Field label="End value (USD)" value={form.end_value} onChange={set("end_value")} type="number" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Order total (USD)" value={form.order_total} onChange={set("order_total")} type="number" />
-            <Field label="Order earnings (USD)" value={form.order_earnings} onChange={set("order_earnings")} type="number" />
-          </div>
-          <Field label="Shipping (USD)" value={form.shipping} onChange={set("shipping")} type="number" />
-          <div>
-            <label className="text-[11px] opacity-60 block mb-1" style={{ color: "#FAF7F2" }}>Card photo (front)</label>
-            {form.photo_url && (
-              <img src={form.photo_url} alt="Card front" className="w-full rounded mb-2" style={{ maxHeight: 220, objectFit: "contain", backgroundColor: "#FAF7F2" }} />
-            )}
-            <div className="flex gap-2">
-              <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold rounded py-2 cursor-pointer" style={{ border: "1px solid rgba(250,247,242,0.4)", color: "#FAF7F2" }}>
-                {uploadingPhoto ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
-                {uploadingPhoto ? "Uploading…" : form.photo_url ? "Replace photo" : "Upload photo"}
-                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploadingPhoto} />
-              </label>
-              {form.photo_url && (
-                <button onClick={() => setForm((p) => ({ ...p, photo_url: null }))} className="text-xs font-semibold rounded px-3" style={{ border: "1px solid #CC0001", color: "#CC0001" }}>
-                  Remove
-                </button>
+
+        <div className="space-y-5">
+          {items.map((it, idx) => (
+            <div key={idx} className={items.length > 1 ? "space-y-3 pb-4" : "space-y-3"} style={items.length > 1 ? { borderBottom: "1px solid rgba(250,247,242,0.15)" } : undefined}>
+              {items.length > 1 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold tracking-wide opacity-60" style={{ color: "#FAF7F2" }}>CARD {idx + 1}</span>
+                  <button onClick={() => removeItem(idx)} className="text-[11px] font-medium" style={{ color: "#CC0001" }}>Remove</button>
+                </div>
               )}
+              <Field label="eBay link" value={it.link} onChange={(e) => updateItem(idx, "link", e.target.value)} placeholder="https://www.ebay.com/itm/..." />
+              <Field label="Card description" value={it.description} onChange={(e) => updateItem(idx, "description", e.target.value)} textarea />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Start date/time" value={it.start_date} onChange={(e) => updateItem(idx, "start_date", e.target.value)} type="datetime-local" />
+                <Field label="Start value (USD)" value={it.start_value} onChange={(e) => updateItem(idx, "start_value", e.target.value)} type="number" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="End date/time" value={it.end_date} onChange={(e) => updateItem(idx, "end_date", e.target.value)} type="datetime-local" />
+                <Field label="End value (USD)" value={it.end_value} onChange={(e) => updateItem(idx, "end_value", e.target.value)} type="number" />
+              </div>
+              <div>
+                <label className="text-[11px] opacity-60 block mb-1" style={{ color: "#FAF7F2" }}>Card photo (front)</label>
+                {it.photo_url && (
+                  <img src={it.photo_url} alt="Card front" className="w-full rounded mb-2" style={{ maxHeight: 220, objectFit: "contain", backgroundColor: "#FAF7F2" }} />
+                )}
+                <div className="flex gap-2">
+                  <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold rounded py-2 cursor-pointer" style={{ border: "1px solid rgba(250,247,242,0.4)", color: "#FAF7F2" }}>
+                    {uploadingPhotoIdx === idx ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                    {uploadingPhotoIdx === idx ? "Uploading…" : it.photo_url ? "Replace photo" : "Upload photo"}
+                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload(idx)} disabled={uploadingPhotoIdx !== null} />
+                  </label>
+                  {it.photo_url && (
+                    <button onClick={() => updateItem(idx, "photo_url", null)} className="text-xs font-semibold rounded px-3" style={{ border: "1px solid #CC0001", color: "#CC0001" }}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
+
+          {!initial && !forOrder && (
+            <button onClick={addItem} className="w-full text-xs font-semibold rounded py-2" style={{ border: "1px dashed rgba(250,247,242,0.4)", color: "#FAF7F2" }}>
+              + Add another card to this order
+            </button>
+          )}
+
+          {!isTrimmed && (
+            <div className="space-y-3 pt-1">
+              {items.length > 1 && (
+                <p className="text-[11px] opacity-50" style={{ color: "#FAF7F2" }}>These apply to the whole order, shared across all {items.length} cards above.</p>
+              )}
+              <div>
+                <label className="text-[11px] opacity-60 block mb-1" style={{ color: "#FAF7F2" }}>Status</label>
+                <select value={shared.status} onChange={handleStatusChange} className="w-full rounded px-3 py-2 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14" }}>
+                  <option value="listed">In Auction</option>
+                  <option value="offer">Best Offer</option>
+                  <option value="sold">Buyer Paid</option>
+                  <option value="paid">Payout Done</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Order total (USD)" value={shared.order_total} onChange={(e) => setShared((p) => ({ ...p, order_total: e.target.value }))} type="number" />
+                <Field label="Order earnings (USD)" value={shared.order_earnings} onChange={(e) => setShared((p) => ({ ...p, order_earnings: e.target.value }))} type="number" />
+              </div>
+              <Field label="Shipping (USD)" value={shared.shipping} onChange={(e) => setShared((p) => ({ ...p, shipping: e.target.value }))} type="number" />
+            </div>
+          )}
         </div>
+
         {error && <p className="text-[11px] mt-3" style={{ color: "#CC0001" }}>{error}</p>}
         <div className="flex gap-2 mt-5">
           {initial && (
@@ -528,6 +853,107 @@ function CardEditor({ initial, consignorId, onSaved, onCancel, onDeleted }) {
 }
 
 /* ---------------------------------------------------------
+   Order editor (owner only) — edits the shared status /
+   totals / shipping for a group of cards in one order.
+--------------------------------------------------------- */
+function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
+  const [form, setForm] = useState({
+    status: order.status,
+    sale_mechanism: order.sale_mechanism ?? null,
+    order_total: order.order_total ?? "",
+    order_earnings: order.order_earnings ?? "",
+    shipping: order.shipping ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const handleStatusChange = (e) => {
+    const newStatus = e.target.value;
+    setForm((prev) => ({
+      ...prev,
+      status: newStatus,
+      sale_mechanism: newStatus === "listed" || newStatus === "offer" ? newStatus : prev.sale_mechanism,
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const payload = {
+        status: form.status,
+        order_total: form.order_total === "" ? null : form.order_total,
+        order_earnings: form.order_earnings === "" ? null : form.order_earnings,
+        shipping: form.shipping === "" ? null : form.shipping,
+        updated_at: new Date().toISOString(),
+      };
+      const { error: orderErr } = await supabase.from("orders").update(payload).eq("id", order.id);
+      if (orderErr) throw orderErr;
+      // Keep each card's own status in sync with the order, so the existing
+      // per-card status filter tabs keep working for grouped cards too.
+      const { error: cardsErr } = await supabase.from("cards").update({ status: form.status, sale_mechanism: form.sale_mechanism }).eq("order_id", order.id);
+      if (cardsErr) throw cardsErr;
+      onSaved();
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    // Cards cascade-delete automatically (order_id references orders on delete cascade)
+    const { error: err } = await supabase.from("orders").delete().eq("id", order.id);
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onDeleted();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" style={{ backgroundColor: "rgba(20,17,16,0.85)" }}>
+      <div className="w-full sm:max-w-md rounded-t-xl sm:rounded-xl p-5 overflow-y-auto" style={{ backgroundColor: "#1F1A18", maxHeight: "90vh" }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold" style={{ color: "#FAF7F2", fontFamily: "'Roboto Slab', serif" }}>Edit order</h3>
+          <button onClick={onCancel}><X size={20} color="#FAF7F2" /></button>
+        </div>
+        <div className="space-y-3">
+          <p className="text-[11px] opacity-50" style={{ color: "#FAF7F2" }}>These apply to the whole order — every card in this group shares them.</p>
+          <div>
+            <label className="text-[11px] opacity-60 block mb-1" style={{ color: "#FAF7F2" }}>Status</label>
+            <select value={form.status} onChange={handleStatusChange} className="w-full rounded px-3 py-2 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14" }}>
+              <option value="listed">In Auction</option>
+              <option value="offer">Best Offer</option>
+              <option value="sold">Buyer Paid</option>
+              <option value="paid">Payout Done</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Order total (USD)" value={form.order_total} onChange={(e) => setForm((p) => ({ ...p, order_total: e.target.value }))} type="number" />
+            <Field label="Order earnings (USD)" value={form.order_earnings} onChange={(e) => setForm((p) => ({ ...p, order_earnings: e.target.value }))} type="number" />
+          </div>
+          <Field label="Shipping (USD)" value={form.shipping} onChange={(e) => setForm((p) => ({ ...p, shipping: e.target.value }))} type="number" />
+        </div>
+        {error && <p className="text-[11px] mt-3" style={{ color: "#CC0001" }}>{error}</p>}
+        <div className="flex gap-2 mt-5">
+          <button onClick={handleDelete} disabled={saving} className="text-sm font-semibold rounded px-4 py-2" style={{ color: "#CC0001", border: "1px solid #CC0001" }}>
+            Remove order
+          </button>
+          <button onClick={handleSave} disabled={saving} className="flex-1 text-sm font-bold rounded px-4 py-2" style={{ backgroundColor: "#CC0001", color: "#FAF7F2" }}>
+            {saving ? "Saving…" : "Save order"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
    Owner dashboard
 --------------------------------------------------------- */
 function OwnerDashboard({ session }) {
@@ -537,6 +963,8 @@ function OwnerDashboard({ session }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingCard, setEditingCard] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [addingToOrder, setAddingToOrder] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newHandle, setNewHandle] = useState("");
@@ -545,6 +973,7 @@ function OwnerDashboard({ session }) {
   const [fx, setFx] = useState({ rate: 1.29, updatedAt: null });
   const [fxInput, setFxInput] = useState("1.29");
   const [filter, setFilter] = useState("listed");
+  const [orders, setOrders] = useState([]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -559,12 +988,14 @@ function OwnerDashboard({ session }) {
   useEffect(() => { loadAll(); }, []);
 
   const refreshCards = async () => {
-    if (!selected) { setCards([]); return; }
+    if (!selected) { setCards([]); setOrders([]); return; }
     const { data } = await supabase.from("cards").select("*").eq("consignor_id", selected).order("created_at", { ascending: false });
     setCards(data || []);
+    const { data: oData } = await supabase.from("orders").select("*").eq("consignor_id", selected).order("created_at", { ascending: false });
+    setOrders(oData || []);
   };
 
-  useEffect(() => { refreshCards(); }, [selected, editingCard]);
+  useEffect(() => { refreshCards(); }, [selected, editingCard, editingOrder, addingToOrder]);
 
   // Auto-refresh FX rate once a day
   useEffect(() => {
@@ -615,7 +1046,7 @@ function OwnerDashboard({ session }) {
 
   const signOut = async () => { await supabase.auth.signOut(); navigate("/owner"); };
 
-  const filteredCards = cards.filter((c) => c.status === filter);
+  const filteredListings = buildListingList(cards, orders).filter((x) => x.status === filter);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#141110" }}><Loader2 className="animate-spin" color="#CC0001" size={28} /></div>;
 
@@ -695,13 +1126,27 @@ function OwnerDashboard({ session }) {
                     </button>
                   ))}
                 </div>
-                {filteredCards.length === 0 ? (
+                {filteredListings.length === 0 ? (
                   <div className="rounded-lg p-8 text-center text-sm opacity-50" style={{ backgroundColor: "#1F1A18", color: "#FAF7F2" }}>Nothing here yet.</div>
                 ) : (
                   <div className="flex flex-col gap-4">
-                    {filteredCards.map((card) => (
-                      <CardSlab key={card.id} card={card} fxRate={fx.rate} editable onEdit={(c) => setEditingCard(c)} onRefresh={refreshCards} />
-                    ))}
+                    {filteredListings.map((x) =>
+                      x.type === "single" ? (
+                        <CardSlab key={x.key} card={x.card} fxRate={fx.rate} editable onEdit={(c) => setEditingCard(c)} onRefresh={refreshCards} />
+                      ) : (
+                        <OrderSlab
+                          key={x.key}
+                          order={x.order}
+                          items={x.items}
+                          fxRate={fx.rate}
+                          editable
+                          onEditOrder={(o) => setEditingOrder(o)}
+                          onEditItem={(c) => setEditingCard(c)}
+                          onAddItem={(o) => setAddingToOrder(o)}
+                          onRefresh={refreshCards}
+                        />
+                      )
+                    )}
                   </div>
                 )}
               </>
@@ -719,6 +1164,26 @@ function OwnerDashboard({ session }) {
           onSaved={() => setEditingCard(null)}
           onCancel={() => setEditingCard(null)}
           onDeleted={() => setEditingCard(null)}
+        />
+      )}
+
+      {addingToOrder !== null && (
+        <CardEditor
+          initial={null}
+          forOrder={addingToOrder}
+          consignorId={selected}
+          onSaved={() => setAddingToOrder(null)}
+          onCancel={() => setAddingToOrder(null)}
+          onDeleted={() => setAddingToOrder(null)}
+        />
+      )}
+
+      {editingOrder !== null && (
+        <OrderEditor
+          order={editingOrder}
+          onSaved={() => setEditingOrder(null)}
+          onCancel={() => setEditingOrder(null)}
+          onDeleted={() => setEditingOrder(null)}
         />
       )}
     </div>
@@ -783,6 +1248,7 @@ function ConsignorPage() {
   const { username } = useParams();
   const [consignor, setConsignor] = useState(undefined);
   const [cards, setCards] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [fxRate, setFxRate] = useState(1.29);
   const [filter, setFilter] = useState("listed");
 
@@ -793,6 +1259,8 @@ function ConsignorPage() {
       if (c) {
         const { data: cardsData } = await supabase.from("cards").select("*").eq("consignor_id", c.id).order("created_at", { ascending: false });
         setCards(cardsData || []);
+        const { data: ordersData } = await supabase.from("orders").select("*").eq("consignor_id", c.id).order("created_at", { ascending: false });
+        setOrders(ordersData || []);
       }
       const { data: fxRow } = await supabase.from("app_settings").select("*").eq("key", "fx_rate").single();
       if (fxRow) setFxRate(fxRow.value.rate);
@@ -806,7 +1274,7 @@ function ConsignorPage() {
     </div>
   );
 
-  const filtered = cards.filter((c) => c.status === filter);
+  const filtered = buildListingList(cards, orders).filter((x) => x.status === filter);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#141110" }}>
@@ -841,7 +1309,13 @@ function ConsignorPage() {
           <div className="rounded-lg p-10 text-center text-sm opacity-50" style={{ backgroundColor: "#1F1A18", color: "#FAF7F2" }}>Nothing here yet.</div>
         ) : (
           <div className="flex flex-col gap-4">
-            {filtered.map((card) => <CardSlab key={card.id} card={card} fxRate={fxRate} editable={false} />)}
+            {filtered.map((x) =>
+              x.type === "single" ? (
+                <CardSlab key={x.key} card={x.card} fxRate={fxRate} editable={false} />
+              ) : (
+                <OrderSlab key={x.key} order={x.order} items={x.items} fxRate={fxRate} editable={false} />
+              )
+            )}
           </div>
         )}
       </div>
