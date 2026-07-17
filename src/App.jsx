@@ -149,6 +149,19 @@ function buildListingList(cards, orders) {
   return combined;
 }
 
+// Sum Total Earnings (SGD) across listings matching any of the given statuses.
+// Each grouped order counts once (using its shared earnings), not once per item.
+function sumTotalEarnings(listings, statuses, fxRate) {
+  return listings
+    .filter((x) => statuses.includes(x.status))
+    .reduce((sum, x) => {
+      const record = x.type === "single" ? x.card : x.order;
+      const val = computeTotalEarningsSGD(record, fxRate);
+      return sum + (val || 0);
+    }, 0);
+}
+
+
 
 /* ---------------------------------------------------------
    Small UI atoms
@@ -1080,7 +1093,10 @@ function OwnerDashboard({ session }) {
 
   const signOut = async () => { await supabase.auth.signOut(); navigate("/owner"); };
 
-  const filteredListings = buildListingList(cards, orders).filter((x) => x.status === filter);
+  const allListings = buildListingList(cards, orders);
+  const filteredListings = allListings.filter((x) => x.status === filter);
+  const amountOwed = sumTotalEarnings(allListings, ["sold"], fx.rate);
+  const amountPaid = sumTotalEarnings(allListings, ["paid"], fx.rate);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#141110" }}><Loader2 className="animate-spin" color="#CC0001" size={28} /></div>;
 
@@ -1152,13 +1168,25 @@ function OwnerDashboard({ session }) {
                     <Plus size={13} /> Add card
                   </button>
                 </div>
-                <div className="flex gap-2 flex-wrap mb-4">
-                  {FILTER_TABS.map((f) => (
-                    <button key={f.key} onClick={() => setFilter(f.key)} className="text-xs font-semibold rounded-full px-3 py-1.5"
-                      style={{ backgroundColor: filter === f.key ? "#CC0001" : "transparent", color: "#FAF7F2", border: filter === f.key ? "none" : "1px solid rgba(250,247,242,0.25)" }}>
-                      {f.label}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                  <div className="flex gap-2 flex-wrap">
+                    {FILTER_TABS.map((f) => (
+                      <button key={f.key} onClick={() => setFilter(f.key)} className="text-xs font-semibold rounded-full px-3 py-1.5"
+                        style={{ backgroundColor: filter === f.key ? "#CC0001" : "transparent", color: "#FAF7F2", border: filter === f.key ? "none" : "1px solid rgba(250,247,242,0.25)" }}>
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "#1F1A18" }}>
+                      <span className="text-[10px] opacity-60 whitespace-nowrap" style={{ color: "#FAF7F2" }}>Amount Owed</span>
+                      <span className="text-sm font-bold whitespace-nowrap" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{fmtSGD(amountOwed)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "#1F1A18" }}>
+                      <span className="text-[10px] opacity-60 whitespace-nowrap" style={{ color: "#FAF7F2" }}>Amount Paid</span>
+                      <span className="text-sm font-bold whitespace-nowrap" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{fmtSGD(amountPaid)}</span>
+                    </div>
+                  </div>
                 </div>
                 {filteredListings.length === 0 ? (
                   <div className="rounded-lg p-8 text-center text-sm opacity-50" style={{ backgroundColor: "#1F1A18", color: "#FAF7F2" }}>Nothing here yet.</div>
@@ -1308,7 +1336,10 @@ function ConsignorPage() {
     </div>
   );
 
-  const filtered = buildListingList(cards, orders).filter((x) => x.status === filter);
+  const allListings = buildListingList(cards, orders);
+  const filtered = allListings.filter((x) => x.status === filter);
+  const amountOwed = sumTotalEarnings(allListings, ["sold"], fxRate);
+  const amountPaid = sumTotalEarnings(allListings, ["paid"], fxRate);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#141110" }}>
@@ -1317,7 +1348,7 @@ function ConsignorPage() {
         <h1 className="text-3xl font-extrabold mb-1" style={{ color: "#CC0001", fontFamily: "'Roboto Slab', serif" }}>{consignor.name}'s cards</h1>
         <p className="text-xs opacity-50 mb-5" style={{ color: "#FAF7F2" }}>Telegram @{consignor.telegram_username}</p>
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "#1F1A18" }}>
             <div className="text-[10px] tracking-widest opacity-50 mb-1" style={{ color: "#FAF7F2" }}>TOTAL CARDS</div>
             <div className="text-lg font-bold" style={{ color: "#FAF7F2", fontFamily: "'Roboto Slab', serif" }}>{cards.length}</div>
@@ -1327,6 +1358,14 @@ function ConsignorPage() {
             <div className="text-lg font-bold" style={{ color: "#FAF7F2", fontFamily: "'Roboto Slab', serif" }}>
               {cards.filter((c) => c.status === "sold" || c.status === "paid").length}/{cards.filter((c) => c.status === "listed" || c.status === "offer").length}
             </div>
+          </div>
+          <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "#1F1A18" }}>
+            <div className="text-[10px] tracking-widest opacity-50 mb-1" style={{ color: "#FAF7F2" }}>AMOUNT OWED</div>
+            <div className="text-lg font-bold" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{fmtSGD(amountOwed)}</div>
+          </div>
+          <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "#1F1A18" }}>
+            <div className="text-[10px] tracking-widest opacity-50 mb-1" style={{ color: "#FAF7F2" }}>AMOUNT PAID</div>
+            <div className="text-lg font-bold" style={{ color: "#3FA34D", fontFamily: "'Roboto Slab', serif" }}>{fmtSGD(amountPaid)}</div>
           </div>
         </div>
 
