@@ -428,56 +428,44 @@ function OrderItemRow({ item, order, now, fxRate, editable, onEditItem, Box }) {
   const endLabel = mechanism === "listed" ? "End Bid" : mechanism === "offer" ? "Offer Accepted" : "End Value";
 
   return (
-    <div className="relative">
-      <div className="overflow-x-auto card-scroll -mx-4 px-4" style={{ WebkitOverflowScrolling: "touch" }}>
-        <div className="flex items-center gap-4" style={{ width: "max-content" }}>
-          {item.photo_url && (
-            <img src={item.photo_url} alt={item.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
+    <div className="flex items-center gap-4" style={{ width: "max-content" }}>
+      {item.photo_url && (
+        <img src={item.photo_url} alt={item.description} className="flex-shrink-0 rounded" style={{ width: 72, height: 100, objectFit: "cover", border: "1px solid #E3DFD6" }} />
+      )}
+
+      <div className="flex-shrink-0" style={{ width: 256 }}>
+        <h3 className="text-[14px] leading-snug font-semibold mb-1.5" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{item.description}</h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Stamp status={order.status} />
+          {item.link && (
+            <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline" style={{ color: "#141110" }}>
+              View listing <ExternalLink size={11} />
+            </a>
           )}
-
-          <div className="flex-shrink-0" style={{ width: 256 }}>
-            <h3 className="text-[14px] leading-snug font-semibold mb-1.5" style={{ color: "#141110", fontFamily: "'Space Grotesk', sans-serif" }}>{item.description}</h3>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Stamp status={order.status} />
-              {item.link && (
-                <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline" style={{ color: "#141110" }}>
-                  View listing <ExternalLink size={11} />
-                </a>
-              )}
-              {editable && (
-                <button onClick={() => onEditItem(item)} className="text-[11px] font-medium hover:underline" style={{ color: "#726C63" }}>
-                  Edit
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
-            <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(item.start_date)}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(item.start_value)}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">{endLabel}</span><span>{item.end_value != null ? fmtUSD(item.end_value) : "In Progress"}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">Countdown</span><span style={countdown.ended && !hasRealEnd ? { color: "#CC0001" } : undefined}>{countdown.text}</span></div>
-            <div className="flex justify-between gap-3"><span className="opacity-60">Shipping</span><span>{hasValue(order.shipping) ? fmtUSD(order.shipping) : "—"}</span></div>
-          </div>
-
-          {Box && (
-            <div className="grid grid-cols-3 gap-1.5 flex-shrink-0" style={{ width: 220 }}>
-              <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(order.order_total) ? fmtUSD(order.order_total) : "—"} />
-              <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(order.order_earnings) ? fmtUSD(order.order_earnings) : "—"} />
-              <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(order, fxRate))} />
-            </div>
+          {editable && (
+            <button onClick={() => onEditItem(item)} className="text-[11px] font-medium hover:underline" style={{ color: "#726C63" }}>
+              Edit
+            </button>
           )}
-          <div aria-hidden className="flex-shrink-0 sm:hidden" style={{ width: 28 }} />
         </div>
       </div>
 
-      <div
-        className="pointer-events-none absolute top-0 bottom-0 right-0 flex items-center justify-end sm:hidden"
-        style={{ width: 36, background: "linear-gradient(to right, transparent, #FAF7F2 65%)" }}
-      >
-        <ChevronRight size={16} color="#726C63" />
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
+        <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(item.start_date)}</span></div>
+        <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(item.start_value)}</span></div>
+        <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
+        <div className="flex justify-between gap-3"><span className="opacity-60">{endLabel}</span><span>{item.end_value != null ? fmtUSD(item.end_value) : "In Progress"}</span></div>
+        <div className="flex justify-between gap-3"><span className="opacity-60">Countdown</span><span style={countdown.ended && !hasRealEnd ? { color: "#CC0001" } : undefined}>{countdown.text}</span></div>
+        <div className="flex justify-between gap-3"><span className="opacity-60">Shipping</span><span>{hasValue(order.shipping) ? fmtUSD(order.shipping) : "—"}</span></div>
       </div>
+
+      {Box && (
+        <div className="grid grid-cols-3 gap-1.5 flex-shrink-0" style={{ width: 220 }}>
+          <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(order.order_total) ? fmtUSD(order.order_total) : "—"} />
+          <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(order.order_earnings) ? fmtUSD(order.order_earnings) : "—"} />
+          <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(order, fxRate))} />
+        </div>
+      )}
     </div>
   );
 }
@@ -552,19 +540,30 @@ function OrderSlab({ order, items, fxRate, onEditOrder, onEditItem, onAddItem, e
           </span>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {items.map((item, idx) => (
-            <OrderItemRow
-              key={item.id}
-              item={item}
-              order={order}
-              now={now}
-              fxRate={fxRate}
-              editable={editable}
-              onEditItem={onEditItem}
-              Box={idx === 0 ? Box : null}
-            />
-          ))}
+        <div className="relative">
+          <div className="overflow-x-auto card-scroll -mx-4 px-4" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div className="flex flex-col gap-3 pr-7 sm:pr-0" style={{ width: "max-content" }}>
+              {items.map((item, idx) => (
+                <OrderItemRow
+                  key={item.id}
+                  item={item}
+                  order={order}
+                  now={now}
+                  fxRate={fxRate}
+                  editable={editable}
+                  onEditItem={onEditItem}
+                  Box={idx === 0 ? Box : null}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="pointer-events-none absolute top-0 bottom-0 right-0 flex items-center justify-end sm:hidden"
+            style={{ width: 36, background: "linear-gradient(to right, transparent, #FAF7F2 65%)" }}
+          >
+            <ChevronRight size={16} color="#726C63" />
+          </div>
         </div>
 
         <div className="flex items-center justify-end gap-3 mt-3 flex-wrap">
