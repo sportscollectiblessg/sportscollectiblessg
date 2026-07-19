@@ -300,7 +300,7 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace", color: "#4A4636" }}>
               <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(card.start_date)}</span></div>
               <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(card.start_value)}</span></div>
               <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
@@ -450,7 +450,7 @@ function OrderItemRow({ item, order, now, fxRate, editable, onEditItem, Box }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'Space Mono', monospace", color: "#4A4636" }}>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace", color: "#4A4636" }}>
         <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(item.start_date)}</span></div>
         <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(item.start_value)}</span></div>
         <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
@@ -459,12 +459,14 @@ function OrderItemRow({ item, order, now, fxRate, editable, onEditItem, Box }) {
         <div className="flex justify-between gap-3"><span className="opacity-60">Shipping</span><span>{hasValue(order.shipping) ? fmtUSD(order.shipping) : "—"}</span></div>
       </div>
 
-      {Box && (
+      {Box ? (
         <div className="grid grid-cols-3 gap-1.5 flex-shrink-0" style={{ width: 220 }}>
           <Box boxKey="order_total" label="ORDER TOTAL" value={hasValue(order.order_total) ? fmtUSD(order.order_total) : "—"} />
           <Box boxKey="order_earnings" label="ORDER EARNINGS" value={hasValue(order.order_earnings) ? fmtUSD(order.order_earnings) : "—"} />
           <Box boxKey="total_earnings" label="TOTAL EARNINGS (SGD)" value={fmtSGD(computeTotalEarningsSGD(order, fxRate))} />
         </div>
+      ) : (
+        <div aria-hidden className="flex-shrink-0" style={{ width: 220 }} />
       )}
     </div>
   );
@@ -1131,7 +1133,7 @@ function OwnerDashboard({ session }) {
                 <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="w-full rounded px-2 py-1 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14" }} />
                 <div className="flex gap-1">
                   <span className="flex items-center px-2 rounded text-sm" style={{ backgroundColor: "#F3EFE3", color: "#726C63" }}>@</span>
-                  <input value={newHandle} onChange={(e) => setNewHandle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addConsignor()} placeholder="telegram_username" className="w-full rounded px-2 py-1 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14", fontFamily: "'Space Mono', monospace" }} />
+                  <input value={newHandle} onChange={(e) => setNewHandle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addConsignor()} placeholder="telegram_username" className="w-full rounded px-2 py-1 text-sm" style={{ backgroundColor: "#F3EFE3", color: "#1C1B14", fontFamily: "'JetBrains Mono', monospace" }} />
                   <button onClick={addConsignor}><Check size={16} color="#7FA087" /></button>
                 </div>
                 {addError && <p className="text-[10px]" style={{ color: "#CC0001" }}>{addError}</p>}
@@ -1142,7 +1144,7 @@ function OwnerDashboard({ session }) {
                 <button key={c.id} onClick={() => setSelected(c.id)} className="w-full text-left rounded px-2.5 py-2 flex items-center justify-between" style={{ backgroundColor: selected === c.id ? "#141110" : "transparent" }}>
                   <div>
                     <div className="text-sm font-semibold" style={{ color: "#FAF7F2" }}>{c.name}</div>
-                    <div className="text-[10px] opacity-40" style={{ color: "#FAF7F2", fontFamily: "'Space Mono', monospace" }}>@{c.telegram_username}</div>
+                    <div className="text-[10px] opacity-40" style={{ color: "#FAF7F2", fontFamily: "'JetBrains Mono', monospace" }}>@{c.telegram_username}</div>
                   </div>
                   <span className="flex items-center gap-2">
                     <span onClick={(e) => { e.stopPropagation(); copyLink(c.telegram_username); }} className="p-1">
