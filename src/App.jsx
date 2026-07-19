@@ -684,6 +684,8 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
     order_total: initial?.order_total ?? "",
     order_earnings: initial?.order_earnings ?? "",
     shipping: initial?.shipping ?? "",
+    courier: initial?.courier || "",
+    tracking_number: initial?.tracking_number || "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -757,6 +759,8 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
           order_total: shared.order_total === "" ? null : shared.order_total,
           order_earnings: shared.order_earnings === "" ? null : shared.order_earnings,
           shipping: shared.shipping === "" ? null : shared.shipping,
+          courier: shared.courier || null,
+          tracking_number: shared.tracking_number || null,
           updated_at: new Date().toISOString(),
         }).eq("id", initial.id);
         if (err) throw err;
@@ -769,6 +773,8 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
           order_total: shared.order_total === "" ? null : shared.order_total,
           order_earnings: shared.order_earnings === "" ? null : shared.order_earnings,
           shipping: shared.shipping === "" ? null : shared.shipping,
+          courier: shared.courier || null,
+          tracking_number: shared.tracking_number || null,
         });
         if (err) throw err;
       } else {
@@ -778,6 +784,8 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
           order_total: shared.order_total === "" ? null : shared.order_total,
           order_earnings: shared.order_earnings === "" ? null : shared.order_earnings,
           shipping: shared.shipping === "" ? null : shared.shipping,
+          courier: shared.courier || null,
+          tracking_number: shared.tracking_number || null,
         }).select().single();
         if (orderErr) throw orderErr;
 
@@ -890,6 +898,12 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
                 <Field label="Order earnings (USD)" value={shared.order_earnings} onChange={(e) => setShared((p) => ({ ...p, order_earnings: e.target.value }))} type="number" />
               </div>
               <Field label="Shipping (USD)" value={shared.shipping} onChange={(e) => setShared((p) => ({ ...p, shipping: e.target.value }))} type="number" />
+              {(shared.status === "sold" || shared.status === "paid") && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Courier" value={shared.courier} onChange={(e) => setShared((p) => ({ ...p, courier: e.target.value }))} placeholder="e.g. SingPost, Aramex, FedEx" />
+                  <Field label="Tracking number" value={shared.tracking_number} onChange={(e) => setShared((p) => ({ ...p, tracking_number: e.target.value }))} placeholder="e.g. RR123456789SG" />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -921,6 +935,8 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
     order_total: order.order_total ?? "",
     order_earnings: order.order_earnings ?? "",
     shipping: order.shipping ?? "",
+    courier: order.courier || "",
+    tracking_number: order.tracking_number || "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -948,6 +964,8 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
         order_total: form.order_total === "" ? null : form.order_total,
         order_earnings: form.order_earnings === "" ? null : form.order_earnings,
         shipping: form.shipping === "" ? null : form.shipping,
+        courier: form.courier || null,
+        tracking_number: form.tracking_number || null,
         updated_at: new Date().toISOString(),
       };
       const { error: orderErr } = await supabase.from("orders").update(payload).eq("id", order.id);
@@ -996,6 +1014,12 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
             <Field label="Order earnings (USD)" value={form.order_earnings} onChange={(e) => setForm((p) => ({ ...p, order_earnings: e.target.value }))} type="number" />
           </div>
           <Field label="Shipping (USD)" value={form.shipping} onChange={(e) => setForm((p) => ({ ...p, shipping: e.target.value }))} type="number" />
+          {(form.status === "sold" || form.status === "paid") && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Courier" value={form.courier} onChange={(e) => setForm((p) => ({ ...p, courier: e.target.value }))} placeholder="e.g. SingPost, Aramex, FedEx" />
+              <Field label="Tracking number" value={form.tracking_number} onChange={(e) => setForm((p) => ({ ...p, tracking_number: e.target.value }))} placeholder="e.g. RR123456789SG" />
+            </div>
+          )}
         </div>
         {error && <p className="text-[11px] mt-3" style={{ color: "#CC0001" }}>{error}</p>}
         <div className="flex gap-2 mt-5">
@@ -1014,6 +1038,76 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
 /* ---------------------------------------------------------
    Owner dashboard
 --------------------------------------------------------- */
+/* ---------------------------------------------------------
+   Package tracking summary — live status via Ship24, shown
+   below the Buyer Paid list for anything with a tracking number.
+--------------------------------------------------------- */
+function PackageTrackingSummary({ listings }) {
+  const trackable = listings.filter((x) => {
+    const record = x.type === "single" ? x.card : x.order;
+    return !!record.tracking_number;
+  });
+
+  const [statuses, setStatuses] = useState({});
+  const trackableKey = trackable.map((x) => x.key).join(",");
+
+  useEffect(() => {
+    trackable.forEach((x) => {
+      if (statuses[x.key]) return;
+      const record = x.type === "single" ? x.card : x.order;
+      setStatuses((prev) => ({ ...prev, [x.key]: { loading: true } }));
+      supabase.functions
+        .invoke("track-package", { body: { trackingNumber: record.tracking_number, courier: record.courier } })
+        .then(({ data, error }) => {
+          setStatuses((prev) => ({
+            ...prev,
+            [x.key]: error ? { loading: false, error: error.message || "Couldn't reach tracking service" } : { loading: false, data },
+          }));
+        });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackableKey]);
+
+  if (trackable.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-xs font-semibold tracking-wide opacity-60 mb-2" style={{ color: "#FAF7F2" }}>PACKAGE TRACKING</h3>
+      <div className="flex flex-col gap-2">
+        {trackable.map((x) => {
+          const record = x.type === "single" ? x.card : x.order;
+          const title = x.type === "single" ? x.card.description : `${x.items.length} cards · one order`;
+          const s = statuses[x.key];
+          return (
+            <div key={x.key} className="rounded-lg p-3 flex items-center justify-between gap-3" style={{ backgroundColor: "#1F1A18" }}>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: "#FAF7F2" }}>{title}</p>
+                <p className="text-[10px] opacity-50" style={{ color: "#FAF7F2", fontFamily: "'JetBrains Mono', monospace" }}>
+                  {record.courier ? `${record.courier} · ` : ""}{record.tracking_number}
+                </p>
+              </div>
+              <div className="text-right flex-shrink-0">
+                {!s || s.loading ? (
+                  <span className="text-[11px] opacity-50" style={{ color: "#FAF7F2" }}>Checking…</span>
+                ) : s.error ? (
+                  <span className="text-[11px]" style={{ color: "#CC0001" }}>{s.error}</span>
+                ) : (
+                  <>
+                    <div className="text-xs font-bold" style={{ color: "#3FA34D" }}>{s.data.statusText || s.data.status}</div>
+                    {s.data.lastEvent && (
+                      <div className="text-[10px] opacity-50 max-w-[220px] truncate" style={{ color: "#FAF7F2" }}>{s.data.lastEvent}</div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function OwnerDashboard({ session }) {
   const navigate = useNavigate();
   const [consignors, setConsignors] = useState([]);
@@ -1222,6 +1316,7 @@ function OwnerDashboard({ session }) {
                     )}
                   </div>
                 )}
+                {filter === "sold" && <PackageTrackingSummary listings={filteredListings} />}
               </>
             ) : (
               <div className="rounded-lg p-8 text-center text-sm opacity-50" style={{ backgroundColor: "#1F1A18", color: "#FAF7F2" }}>Add a consignor to get started.</div>
