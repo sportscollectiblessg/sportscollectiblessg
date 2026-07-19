@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Routes, Route, useParams, useNavigate, Link } from "react-router-dom";
 import {
   Plus, Copy, Check, X, RotateCcw, ExternalLink, Shield, Loader2,
-  Lock, KeyRound, ImagePlus, Trash2, ChevronRight,
+  Lock, KeyRound, ImagePlus, Trash2, ChevronRight, AlertTriangle, Package, MapPin,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -219,6 +219,92 @@ function Field({ label, value, onChange, type = "text", textarea, placeholder })
 const RECEIPT_FIELD = { order_total: "receipt_order_total_url", order_earnings: "receipt_order_earnings_url" };
 const RECEIPT_LABEL = { order_total: "Order Total", order_earnings: "Order Earnings" };
 
+// Live parcel tracking, shown inline on any card/order that has a tracking
+// number entered. Works the same for owners and consignors since it's
+// embedded directly in CardSlab/OrderSlab rather than a separate section.
+const TRACKING_MILESTONES = [
+  { key: "info_received", label: "Info Received" },
+  { key: "in_transit", label: "In Transit" },
+  { key: "out_for_delivery", label: "Out for Delivery" },
+  { key: "delivered", label: "Delivered" },
+];
+
+function TrackingTimeline({ trackingNumber, courier }) {
+  const [state, setState] = useState(null); // null | { loading } | { error } | { data }
+
+  useEffect(() => {
+    if (!trackingNumber) return;
+    let cancelled = false;
+    setState({ loading: true });
+    supabase.functions
+      .invoke("track-package", { body: { trackingNumber, courier } })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setState(error ? { error: error.message || "Tracking unavailable" } : { data });
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackingNumber, courier]);
+
+  if (!trackingNumber) return null;
+
+  if (!state || state.loading) {
+    return <div className="text-[11px] opacity-50 mt-3" style={{ color: "#4A4636" }}>Checking tracking…</div>;
+  }
+  if (state.error) {
+    return <div className="text-[11px] mt-3" style={{ color: "#CC0001" }}>{state.error}</div>;
+  }
+
+  const { status, statusText, lastEvent, origin, destination } = state.data;
+  const isException = status === "exception" || status === "failed_attempt";
+
+  if (isException) {
+    return (
+      <div className="rounded-lg p-3 mt-3 flex items-start gap-2" style={{ backgroundColor: "#FCEBEA", border: "1px solid #CC0001" }}>
+        <AlertTriangle size={16} color="#CC0001" className="flex-shrink-0 mt-0.5" />
+        <div>
+          <div className="text-xs font-bold" style={{ color: "#CC0001" }}>{statusText}</div>
+          {lastEvent && <div className="text-[11px] mt-0.5" style={{ color: "#4A4636" }}>{lastEvent}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  const stepIndex = TRACKING_MILESTONES.findIndex((m) => m.key === status);
+  // available_for_pickup isn't on the main track — treat it as roughly on par with out-for-delivery.
+  const activeIndex = stepIndex >= 0 ? stepIndex : status === "available_for_pickup" ? 2 : -1;
+
+  return (
+    <div className="rounded-lg p-3 mt-3" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6" }}>
+      {(origin || destination) && (
+        <div className="flex items-center justify-between text-[10px] mb-3" style={{ color: "#4A4636" }}>
+          <div className="flex items-center gap-1"><MapPin size={10} /><span className="opacity-60">Origin</span> <span className="font-semibold">{origin || "—"}</span></div>
+          <div className="flex-1 mx-2 border-t border-dashed" style={{ borderColor: "#E3DFD6" }} />
+          <div className="flex items-center gap-1"><span className="font-semibold">{destination || "—"}</span> <span className="opacity-60">Destination</span><Package size={10} /></div>
+        </div>
+      )}
+      <div className="flex items-center">
+        {TRACKING_MILESTONES.map((m, i) => {
+          const reached = i <= activeIndex;
+          const isLast = i === TRACKING_MILESTONES.length - 1;
+          return (
+            <React.Fragment key={m.key}>
+              <div className="flex flex-col items-center" style={{ minWidth: 0, flexShrink: 0 }}>
+                <div className="rounded-full flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, backgroundColor: reached ? "#CC0001" : "#E3DFD6" }}>
+                  {reached && <Check size={11} color="#FAF7F2" strokeWidth={3} />}
+                </div>
+                <span className="text-[9px] mt-1 text-center leading-tight" style={{ color: reached ? "#141110" : "#726C63", fontWeight: reached ? 700 : 400, maxWidth: 56 }}>{m.label}</span>
+              </div>
+              {!isLast && <div className="flex-1" style={{ height: 2, backgroundColor: i < activeIndex ? "#CC0001" : "#E3DFD6", marginBottom: 14 }} />}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      {lastEvent && <div className="text-[10px] mt-2 pt-2 opacity-60 truncate" style={{ color: "#4A4636", borderTop: "1px solid #E3DFD6" }}>{lastEvent}</div>}
+    </div>
+  );
+}
+
 function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -337,6 +423,8 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
             <ChevronRight size={16} color="#726C63" />
           </div>
         </div>
+
+        <TrackingTimeline trackingNumber={card.tracking_number} courier={card.courier} />
 
         <div className="flex items-center justify-end gap-3 mt-3">
           <div className="text-[10px] opacity-50 whitespace-nowrap" style={{ color: "#4A4636", fontFamily: "'Space Grotesk', sans-serif" }}>Updated {timeAgo(card.updated_at)}</div>
@@ -577,6 +665,8 @@ function OrderSlab({ order, items, fxRate, onEditOrder, onEditItem, onAddItem, e
             <ChevronRight size={16} color="#726C63" />
           </div>
         </div>
+
+        <TrackingTimeline trackingNumber={order.tracking_number} courier={order.courier} />
 
         <div className="flex items-center justify-end gap-3 mt-3 flex-wrap">
           {editable && (
@@ -1038,75 +1128,6 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
 /* ---------------------------------------------------------
    Owner dashboard
 --------------------------------------------------------- */
-/* ---------------------------------------------------------
-   Package tracking summary — live status via Ship24, shown
-   below the Buyer Paid list for anything with a tracking number.
---------------------------------------------------------- */
-function PackageTrackingSummary({ listings }) {
-  const trackable = listings.filter((x) => {
-    const record = x.type === "single" ? x.card : x.order;
-    return !!record.tracking_number;
-  });
-
-  const [statuses, setStatuses] = useState({});
-  const trackableKey = trackable.map((x) => x.key).join(",");
-
-  useEffect(() => {
-    trackable.forEach((x) => {
-      if (statuses[x.key]) return;
-      const record = x.type === "single" ? x.card : x.order;
-      setStatuses((prev) => ({ ...prev, [x.key]: { loading: true } }));
-      supabase.functions
-        .invoke("track-package", { body: { trackingNumber: record.tracking_number, courier: record.courier } })
-        .then(({ data, error }) => {
-          setStatuses((prev) => ({
-            ...prev,
-            [x.key]: error ? { loading: false, error: error.message || "Couldn't reach tracking service" } : { loading: false, data },
-          }));
-        });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackableKey]);
-
-  if (trackable.length === 0) return null;
-
-  return (
-    <div className="mt-6">
-      <h3 className="text-xs font-semibold tracking-wide opacity-60 mb-2" style={{ color: "#FAF7F2" }}>PACKAGE TRACKING</h3>
-      <div className="flex flex-col gap-2">
-        {trackable.map((x) => {
-          const record = x.type === "single" ? x.card : x.order;
-          const title = x.type === "single" ? x.card.description : `${x.items.length} cards · one order`;
-          const s = statuses[x.key];
-          return (
-            <div key={x.key} className="rounded-lg p-3 flex items-center justify-between gap-3" style={{ backgroundColor: "#1F1A18" }}>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold truncate" style={{ color: "#FAF7F2" }}>{title}</p>
-                <p className="text-[10px] opacity-50" style={{ color: "#FAF7F2", fontFamily: "'JetBrains Mono', monospace" }}>
-                  {record.courier ? `${record.courier} · ` : ""}{record.tracking_number}
-                </p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                {!s || s.loading ? (
-                  <span className="text-[11px] opacity-50" style={{ color: "#FAF7F2" }}>Checking…</span>
-                ) : s.error ? (
-                  <span className="text-[11px]" style={{ color: "#CC0001" }}>{s.error}</span>
-                ) : (
-                  <>
-                    <div className="text-xs font-bold" style={{ color: "#3FA34D" }}>{s.data.statusText || s.data.status}</div>
-                    {s.data.lastEvent && (
-                      <div className="text-[10px] opacity-50 max-w-[220px] truncate" style={{ color: "#FAF7F2" }}>{s.data.lastEvent}</div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 function OwnerDashboard({ session }) {
   const navigate = useNavigate();
@@ -1316,7 +1337,6 @@ function OwnerDashboard({ session }) {
                     )}
                   </div>
                 )}
-                {filter === "sold" && <PackageTrackingSummary listings={filteredListings} />}
               </>
             ) : (
               <div className="rounded-lg p-8 text-center text-sm opacity-50" style={{ backgroundColor: "#1F1A18", color: "#FAF7F2" }}>Add a consignor to get started.</div>
