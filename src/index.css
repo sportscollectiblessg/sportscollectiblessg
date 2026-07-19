@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background-color: #141110;
+}
+
+/* Black scrollbar for the horizontally-scrollable card strip */
+.card-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #141110 transparent;
+}
+.card-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.card-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.card-scroll::-webkit-scrollbar-thumb {
+  background-color: #141110;
+  border-radius: 4px;
+}
