@@ -55,11 +55,25 @@ function extractItemId(link) {
   const m = link.match(/(\d{6,})/);
   return m ? m[1] : null;
 }
-function estimatedEnd(startDateStr, days) {
+// If a listing's countdown has run out but the status was never moved to
+// Buyer Paid, keep restarting the countdown from the last cycle's end date
+// instead of just sitting on "Ended" forever. Returns the current cycle's
+// { start, end } as Date objects.
+function currentCountdownCycle(startDateStr, days, now) {
   if (!startDateStr) return null;
   const start = new Date(startDateStr);
   if (isNaN(start.getTime())) return null;
-  return new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+  const intervalMs = days * 24 * 60 * 60 * 1000;
+  const nowMs = now.getTime();
+  const startMs = start.getTime();
+
+  if (startMs + intervalMs > nowMs) {
+    return { start, end: new Date(startMs + intervalMs) };
+  }
+  const cyclesElapsed = Math.floor((nowMs - startMs) / intervalMs);
+  let cycleStartMs = startMs + cyclesElapsed * intervalMs;
+  if (cycleStartMs + intervalMs <= nowMs) cycleStartMs += intervalMs;
+  return { start: new Date(cycleStartMs), end: new Date(cycleStartMs + intervalMs) };
 }
 function formatCountdownLong(targetDate, now) {
   const diff = targetDate.getTime() - now.getTime();
@@ -217,13 +231,11 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
   const [receiptError, setReceiptError] = useState("");
 
   const hasRealEnd = !!card.end_date;
-  const estEnd = !hasRealEnd && card.start_date
-    ? card.status === "listed" ? estimatedEnd(card.start_date, 7)
-    : card.status === "offer" ? estimatedEnd(card.start_date, 30)
-    : null
-    : null;
-  const endDisplay = hasRealEnd ? fmtDateTime(card.end_date) : estEnd ? fmtDateTime(estEnd.toISOString()) : "—";
-  const countdown = hasRealEnd ? { text: "Ended", ended: true } : estEnd ? formatCountdownLong(estEnd, now) : { text: "—", ended: false };
+  const cycleDays = card.status === "listed" ? 7 : card.status === "offer" ? 30 : null;
+  const cycle = !hasRealEnd && card.start_date && cycleDays ? currentCountdownCycle(card.start_date, cycleDays, now) : null;
+  const startDisplay = cycle ? fmtDateTime(cycle.start.toISOString()) : fmtDateTime(card.start_date);
+  const endDisplay = hasRealEnd ? fmtDateTime(card.end_date) : cycle ? fmtDateTime(cycle.end.toISOString()) : "—";
+  const countdown = hasRealEnd ? { text: "Ended", ended: true } : cycle ? formatCountdownLong(cycle.end, now) : { text: "—", ended: false };
   const mechanism = card.sale_mechanism || card.status;
   const startLabel = mechanism === "listed" ? "Start Bid" : mechanism === "offer" ? "Listed Price" : "Start Value";
   const endLabel = mechanism === "listed" ? "End Bid" : mechanism === "offer" ? "Offer Accepted" : "End Value";
@@ -301,7 +313,7 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace", color: "#4A4636" }}>
-              <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(card.start_date)}</span></div>
+              <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{startDisplay}</span></div>
               <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(card.start_value)}</span></div>
               <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
               <div className="flex justify-between gap-3"><span className="opacity-60">{endLabel}</span><span>{card.end_value != null ? fmtUSD(card.end_value) : "In Progress"}</span></div>
@@ -416,13 +428,11 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
 --------------------------------------------------------- */
 function OrderItemRow({ item, order, now, fxRate, editable, onEditItem, Box }) {
   const hasRealEnd = !!item.end_date;
-  const estEnd = !hasRealEnd && item.start_date
-    ? item.status === "listed" ? estimatedEnd(item.start_date, 7)
-    : item.status === "offer" ? estimatedEnd(item.start_date, 30)
-    : null
-    : null;
-  const endDisplay = hasRealEnd ? fmtDateTime(item.end_date) : estEnd ? fmtDateTime(estEnd.toISOString()) : "—";
-  const countdown = hasRealEnd ? { text: "Ended", ended: true } : estEnd ? formatCountdownLong(estEnd, now) : { text: "—", ended: false };
+  const cycleDays = item.status === "listed" ? 7 : item.status === "offer" ? 30 : null;
+  const cycle = !hasRealEnd && item.start_date && cycleDays ? currentCountdownCycle(item.start_date, cycleDays, now) : null;
+  const startDisplay = cycle ? fmtDateTime(cycle.start.toISOString()) : fmtDateTime(item.start_date);
+  const endDisplay = hasRealEnd ? fmtDateTime(item.end_date) : cycle ? fmtDateTime(cycle.end.toISOString()) : "—";
+  const countdown = hasRealEnd ? { text: "Ended", ended: true } : cycle ? formatCountdownLong(cycle.end, now) : { text: "—", ended: false };
   const mechanism = item.sale_mechanism || item.status;
   const startLabel = mechanism === "listed" ? "Start Bid" : mechanism === "offer" ? "Listed Price" : "Start Value";
   const endLabel = mechanism === "listed" ? "End Bid" : mechanism === "offer" ? "Offer Accepted" : "End Value";
@@ -451,7 +461,7 @@ function OrderItemRow({ item, order, now, fxRate, editable, onEditItem, Box }) {
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] flex-shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace", color: "#4A4636" }}>
-        <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{fmtDateTime(item.start_date)}</span></div>
+        <div className="flex justify-between gap-3"><span className="opacity-60">Start</span><span>{startDisplay}</span></div>
         <div className="flex justify-between gap-3"><span className="opacity-60">{startLabel}</span><span>{fmtUSD(item.start_value)}</span></div>
         <div className="flex justify-between gap-3"><span className="opacity-60">End</span><span>{endDisplay}</span></div>
         <div className="flex justify-between gap-3"><span className="opacity-60">{endLabel}</span><span>{item.end_value != null ? fmtUSD(item.end_value) : "In Progress"}</span></div>
