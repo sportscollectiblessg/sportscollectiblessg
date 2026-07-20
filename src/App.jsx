@@ -251,9 +251,25 @@ function TrackingTimeline({ trackingNumber, courier, manualDeliveredAt }) {
     setState({ loading: true });
     supabase.functions
       .invoke("track-package", { body: { trackingNumber, courier } })
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (cancelled) return;
-        setState(error ? { error: error.message || "Tracking unavailable" } : { data });
+        if (!error) {
+          setState({ data });
+          return;
+        }
+        // supabase-js's default error.message is a generic "non-2xx status
+        // code" string — the actual reason (quota exceeded, bad tracking
+        // number, etc.) is in the response body, so unwrap that instead.
+        let message = error.message || "Tracking unavailable";
+        try {
+          if (error.context && typeof error.context.json === "function") {
+            const body = await error.context.json();
+            if (body?.error) message = body.error;
+          }
+        } catch {
+          // fall back to the generic message above
+        }
+        setState({ error: message });
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -287,6 +303,11 @@ function TrackingTimeline({ trackingNumber, courier, manualDeliveredAt }) {
         <div className="text-[11px] font-bold mt-2 pt-2" style={{ color: "#141110", borderTop: "1px solid #E3DFD6" }}>
           Package delivered on {fmtDDMMYYYY(manualDeliveredAt)}
         </div>
+        {trackingNumber && (
+          <div className="text-[10px] mt-1 opacity-50" style={{ color: "#4A4636", fontFamily: "'JetBrains Mono', monospace" }}>
+            {courier ? `${courier} · ` : ""}{trackingNumber}
+          </div>
+        )}
       </div>
     );
   }
@@ -353,6 +374,9 @@ function TrackingTimeline({ trackingNumber, courier, manualDeliveredAt }) {
       ) : (
         lastEvent && <div className="text-[10px] mt-2 pt-2 opacity-60 truncate" style={{ color: "#4A4636", borderTop: "1px solid #E3DFD6" }}>{lastEvent}</div>
       )}
+      <div className="text-[10px] mt-1 opacity-50" style={{ color: "#4A4636", fontFamily: "'JetBrains Mono', monospace" }}>
+        {courier ? `${courier} · ` : ""}{trackingNumber}
+      </div>
     </div>
   );
 }

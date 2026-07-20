@@ -64,10 +64,15 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ trackingNumber }),
     });
 
-    const payload = await res.json();
+    let payload;
+    try {
+      payload = await res.json();
+    } catch {
+      return json({ error: `Ship24 returned an unreadable response (HTTP ${res.status}) — this can happen when a usage quota or rate limit is exceeded.` }, 502);
+    }
 
     if (!res.ok) {
-      return json({ error: payload?.message || payload?.error?.message || "Ship24 couldn't process this tracking number." }, 502);
+      return json({ error: payload?.message || payload?.error?.message || `Ship24 couldn't process this tracking number (HTTP ${res.status}).` }, 502);
     }
 
     // Response shape read defensively — Ship24's docs confirm the
@@ -90,11 +95,21 @@ Deno.serve(async (req) => {
 
     const status = shipment.statusMilestone || latestEvent?.statusMilestone || "unknown";
 
+    // Best-effort origin/destination — field names for this aren't fully
+    // confirmed from Ship24's docs, so we check a few plausible spots and
+    // simply omit it if none match rather than showing something wrong.
+    const origin =
+      shipment.originCountryCode || shipment.origin?.country || tracking.originCountryCode || null;
+    const destination =
+      shipment.destinationCountryCode || shipment.destination?.country || tracking.destinationCountryCode || null;
+
     return json({
       status,
       statusText: STATUS_LABELS[status] || status,
       lastEvent: latestEvent?.status || null,
       lastUpdate: latestEvent?.occurrenceDatetime || null,
+      origin,
+      destination,
     });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "Unexpected error" }, 500);
