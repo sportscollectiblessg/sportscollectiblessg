@@ -241,6 +241,19 @@ const TRACKING_MILESTONES = [
   { key: "delivered", label: "Delivered" },
 ];
 
+// Ship24 allows a maximum of 10 requests/second per endpoint. A dashboard
+// page can easily mount many TrackingTimeline instances at once (every
+// Buyer Paid card fires its own request on mount), which can burst past
+// that limit even though nowhere near any monthly quota. This queue
+// serializes all tracking calls site-wide with a small gap between each,
+// so they're spread out instead of firing in a single burst.
+let trackingQueueTail = Promise.resolve();
+function queueTrackingRequest(fn) {
+  const result = trackingQueueTail.then(fn);
+  trackingQueueTail = result.catch(() => {}).then(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  return result;
+}
+
 function TrackingTimeline({ trackingNumber, courier, manualDeliveredAt }) {
   const [state, setState] = useState(null); // null | { loading } | { error } | { data }
 
@@ -249,8 +262,7 @@ function TrackingTimeline({ trackingNumber, courier, manualDeliveredAt }) {
     if (!trackingNumber) return;
     let cancelled = false;
     setState({ loading: true });
-    supabase.functions
-      .invoke("track-package", { body: { trackingNumber, courier } })
+    queueTrackingRequest(() => supabase.functions.invoke("track-package", { body: { trackingNumber, courier } }))
       .then(async ({ data, error }) => {
         if (cancelled) return;
         if (!error) {

@@ -64,11 +64,19 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ trackingNumber }),
     });
 
+    // Ship24 allows a max of 10 requests/second per endpoint — this is the
+    // *only* documented cause of a 429 from them, so we can be specific and
+    // reassuring here rather than guessing. It resolves within a second or
+    // two on its own; the frontend also staggers requests to avoid this.
+    if (res.status === 429) {
+      return json({ error: "Ship24's rate limit was hit (too many tracking checks at once). This clears itself within a few seconds — try refreshing shortly." }, 502);
+    }
+
     let payload;
     try {
       payload = await res.json();
     } catch {
-      return json({ error: `Ship24 returned an unreadable response (HTTP ${res.status}) — this can happen when a usage quota or rate limit is exceeded.` }, 502);
+      return json({ error: `Ship24 returned an unreadable response (HTTP ${res.status}).` }, 502);
     }
 
     if (!res.ok) {
