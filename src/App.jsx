@@ -27,7 +27,7 @@ function computeTotalEarningsSGD(card, rate) {
 function fmtDate(d) {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleDateString("en-SG", { day: "2-digit", month: "short", year: "numeric" });
+    return new Date(d).toLocaleDateString("en-SG", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Singapore" });
   } catch {
     return d;
   }
@@ -35,11 +35,9 @@ function fmtDate(d) {
 function fmtDDMMYYYY(d) {
   if (!d) return "—";
   try {
-    const date = new Date(d);
-    const dd = String(date.getDate()).padStart(2, "0");
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    const yyyy = date.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(d));
+    const get = (type) => parts.find((p) => p.type === type)?.value;
+    return `${get("day")}/${get("month")}/${get("year")}`;
   } catch {
     return d;
   }
@@ -47,9 +45,34 @@ function fmtDDMMYYYY(d) {
 function fmtDateTime(d) {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleString("en-SG", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return new Date(d).toLocaleString("en-SG", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Singapore" });
   } catch {
     return d;
+  }
+}
+// Listing times are always meant as Singapore time, regardless of which
+// device someone happens to be typing on or viewing from — Singapore has a
+// fixed UTC+8 offset (no daylight saving), so these convert explicitly
+// instead of relying on the browser's own system timezone.
+function isoToSGTInputValue(iso) {
+  if (!iso) return "";
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Singapore",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(new Date(iso));
+    const get = (type) => parts.find((p) => p.type === type)?.value;
+    return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+  } catch {
+    return "";
+  }
+}
+function sgtInputValueToISO(value) {
+  if (!value) return null;
+  try {
+    return new Date(`${value}:00+08:00`).toISOString();
+  } catch {
+    return null;
   }
 }
 function timeAgo(iso) {
@@ -855,7 +878,9 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
   const isQuickAdd = !initial && !!forOrder;
   const isTrimmed = isGroupItemEdit || isQuickAdd; // no status/financial fields shown
 
-  const [items, setItems] = useState(initial ? [{ ...initial }] : [blankItem()]);
+  const [items, setItems] = useState(
+    initial ? [{ ...initial, start_date: isoToSGTInputValue(initial.start_date), end_date: isoToSGTInputValue(initial.end_date) }] : [blankItem()]
+  );
   const [shared, setShared] = useState({
     status: initial?.status || "listed",
     sale_mechanism: initial?.sale_mechanism || null,
@@ -908,8 +933,8 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
 
   const itemPayload = (it) => ({
     link: it.link, description: it.description,
-    start_date: it.start_date || null, start_value: it.start_value === "" ? null : it.start_value,
-    end_date: it.end_date || null, end_value: it.end_value === "" ? null : it.end_value,
+    start_date: sgtInputValueToISO(it.start_date), start_value: it.start_value === "" ? null : it.start_value,
+    end_date: sgtInputValueToISO(it.end_date), end_value: it.end_value === "" ? null : it.end_value,
     photo_url: it.photo_url,
   });
 
