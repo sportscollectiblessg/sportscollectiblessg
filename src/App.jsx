@@ -32,6 +32,18 @@ function fmtDate(d) {
     return d;
   }
 }
+function fmtDDMMYYYY(d) {
+  if (!d) return "—";
+  try {
+    const date = new Date(d);
+    const dd = String(date.getDate()).padStart(2, "0");
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const yyyy = date.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  } catch {
+    return d;
+  }
+}
 function fmtDateTime(d) {
   if (!d) return "—";
   try {
@@ -229,10 +241,11 @@ const TRACKING_MILESTONES = [
   { key: "delivered", label: "Delivered" },
 ];
 
-function TrackingTimeline({ trackingNumber, courier }) {
+function TrackingTimeline({ trackingNumber, courier, manualDeliveredAt }) {
   const [state, setState] = useState(null); // null | { loading } | { error } | { data }
 
   useEffect(() => {
+    if (manualDeliveredAt) return; // manual override takes priority — skip the live check entirely
     if (!trackingNumber) return;
     let cancelled = false;
     setState({ loading: true });
@@ -244,9 +257,39 @@ function TrackingTimeline({ trackingNumber, courier }) {
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackingNumber, courier]);
+  }, [trackingNumber, courier, manualDeliveredAt]);
 
-  if (!trackingNumber) return null;
+  if (!trackingNumber && !manualDeliveredAt) return null;
+
+  const deliveredStepper = (
+    <div className="flex items-center">
+      {TRACKING_MILESTONES.map((m, i) => {
+        const isLast = i === TRACKING_MILESTONES.length - 1;
+        return (
+          <React.Fragment key={m.key}>
+            <div className="flex flex-col items-center" style={{ minWidth: 0, flexShrink: 0 }}>
+              <div className="rounded-full flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, backgroundColor: "#CC0001" }}>
+                <Check size={11} color="#FAF7F2" strokeWidth={3} />
+              </div>
+              <span className="text-[9px] mt-1 text-center leading-tight" style={{ color: "#141110", fontWeight: 700, maxWidth: 56 }}>{m.label}</span>
+            </div>
+            {!isLast && <div className="flex-1" style={{ height: 2, backgroundColor: "#CC0001", marginBottom: 14 }} />}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+
+  if (manualDeliveredAt) {
+    return (
+      <div className="rounded-lg p-3 mt-3" style={{ backgroundColor: "#FAF7F2", border: "1px solid #E3DFD6" }}>
+        {deliveredStepper}
+        <div className="text-[11px] font-bold mt-2 pt-2" style={{ color: "#141110", borderTop: "1px solid #E3DFD6" }}>
+          Package delivered on {fmtDDMMYYYY(manualDeliveredAt)}
+        </div>
+      </div>
+    );
+  }
 
   if (!state || state.loading) {
     return <div className="text-[11px] opacity-50 mt-3" style={{ color: "#4A4636" }}>Checking tracking…</div>;
@@ -255,7 +298,7 @@ function TrackingTimeline({ trackingNumber, courier }) {
     return <div className="text-[11px] mt-3" style={{ color: "#CC0001" }}>{state.error}</div>;
   }
 
-  const { status, statusText, lastEvent, origin, destination } = state.data;
+  const { status, statusText, lastEvent, lastUpdate, origin, destination } = state.data;
   const isException = status === "exception" || status === "failed_attempt";
 
   if (isException) {
@@ -270,6 +313,7 @@ function TrackingTimeline({ trackingNumber, courier }) {
     );
   }
 
+  const isDelivered = status === "delivered";
   const stepIndex = TRACKING_MILESTONES.findIndex((m) => m.key === status);
   // available_for_pickup isn't on the main track — treat it as roughly on par with out-for-delivery.
   const activeIndex = stepIndex >= 0 ? stepIndex : status === "available_for_pickup" ? 2 : -1;
@@ -283,24 +327,32 @@ function TrackingTimeline({ trackingNumber, courier }) {
           <div className="flex items-center gap-1"><span className="font-semibold">{destination || "—"}</span> <span className="opacity-60">Destination</span><Package size={10} /></div>
         </div>
       )}
-      <div className="flex items-center">
-        {TRACKING_MILESTONES.map((m, i) => {
-          const reached = i <= activeIndex;
-          const isLast = i === TRACKING_MILESTONES.length - 1;
-          return (
-            <React.Fragment key={m.key}>
-              <div className="flex flex-col items-center" style={{ minWidth: 0, flexShrink: 0 }}>
-                <div className="rounded-full flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, backgroundColor: reached ? "#CC0001" : "#E3DFD6" }}>
-                  {reached && <Check size={11} color="#FAF7F2" strokeWidth={3} />}
+      {isDelivered ? deliveredStepper : (
+        <div className="flex items-center">
+          {TRACKING_MILESTONES.map((m, i) => {
+            const reached = i <= activeIndex;
+            const isLast = i === TRACKING_MILESTONES.length - 1;
+            return (
+              <React.Fragment key={m.key}>
+                <div className="flex flex-col items-center" style={{ minWidth: 0, flexShrink: 0 }}>
+                  <div className="rounded-full flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, backgroundColor: reached ? "#CC0001" : "#E3DFD6" }}>
+                    {reached && <Check size={11} color="#FAF7F2" strokeWidth={3} />}
+                  </div>
+                  <span className="text-[9px] mt-1 text-center leading-tight" style={{ color: reached ? "#141110" : "#726C63", fontWeight: reached ? 700 : 400, maxWidth: 56 }}>{m.label}</span>
                 </div>
-                <span className="text-[9px] mt-1 text-center leading-tight" style={{ color: reached ? "#141110" : "#726C63", fontWeight: reached ? 700 : 400, maxWidth: 56 }}>{m.label}</span>
-              </div>
-              {!isLast && <div className="flex-1" style={{ height: 2, backgroundColor: i < activeIndex ? "#CC0001" : "#E3DFD6", marginBottom: 14 }} />}
-            </React.Fragment>
-          );
-        })}
-      </div>
-      {lastEvent && <div className="text-[10px] mt-2 pt-2 opacity-60 truncate" style={{ color: "#4A4636", borderTop: "1px solid #E3DFD6" }}>{lastEvent}</div>}
+                {!isLast && <div className="flex-1" style={{ height: 2, backgroundColor: i < activeIndex ? "#CC0001" : "#E3DFD6", marginBottom: 14 }} />}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+      {isDelivered ? (
+        <div className="text-[11px] font-bold mt-2 pt-2" style={{ color: "#141110", borderTop: "1px solid #E3DFD6" }}>
+          Package delivered on {fmtDDMMYYYY(lastUpdate)}
+        </div>
+      ) : (
+        lastEvent && <div className="text-[10px] mt-2 pt-2 opacity-60 truncate" style={{ color: "#4A4636", borderTop: "1px solid #E3DFD6" }}>{lastEvent}</div>
+      )}
     </div>
   );
 }
@@ -424,7 +476,7 @@ function CardSlab({ card, fxRate, onEdit, editable, onRefresh }) {
           </div>
         </div>
 
-        <TrackingTimeline trackingNumber={card.tracking_number} courier={card.courier} />
+        <TrackingTimeline trackingNumber={card.tracking_number} courier={card.courier} manualDeliveredAt={card.manual_delivered_at} />
 
         <div className="flex items-center justify-end gap-3 mt-3">
           <div className="text-[10px] opacity-50 whitespace-nowrap" style={{ color: "#4A4636", fontFamily: "'Space Grotesk', sans-serif" }}>Updated {timeAgo(card.updated_at)}</div>
@@ -666,7 +718,7 @@ function OrderSlab({ order, items, fxRate, onEditOrder, onEditItem, onAddItem, e
           </div>
         </div>
 
-        <TrackingTimeline trackingNumber={order.tracking_number} courier={order.courier} />
+        <TrackingTimeline trackingNumber={order.tracking_number} courier={order.courier} manualDeliveredAt={order.manual_delivered_at} />
 
         <div className="flex items-center justify-end gap-3 mt-3 flex-wrap">
           {editable && (
@@ -776,6 +828,7 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
     shipping: initial?.shipping ?? "",
     courier: initial?.courier || "",
     tracking_number: initial?.tracking_number || "",
+    manual_delivered_at: initial?.manual_delivered_at || "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -851,6 +904,7 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
           shipping: shared.shipping === "" ? null : shared.shipping,
           courier: shared.courier || null,
           tracking_number: shared.tracking_number || null,
+          manual_delivered_at: shared.manual_delivered_at || null,
           updated_at: new Date().toISOString(),
         }).eq("id", initial.id);
         if (err) throw err;
@@ -865,6 +919,7 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
           shipping: shared.shipping === "" ? null : shared.shipping,
           courier: shared.courier || null,
           tracking_number: shared.tracking_number || null,
+          manual_delivered_at: shared.manual_delivered_at || null,
         });
         if (err) throw err;
       } else {
@@ -876,6 +931,7 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
           shipping: shared.shipping === "" ? null : shared.shipping,
           courier: shared.courier || null,
           tracking_number: shared.tracking_number || null,
+          manual_delivered_at: shared.manual_delivered_at || null,
         }).select().single();
         if (orderErr) throw orderErr;
 
@@ -994,6 +1050,22 @@ function CardEditor({ initial, consignorId, forOrder, onSaved, onCancel, onDelet
                   <Field label="Tracking number" value={shared.tracking_number} onChange={(e) => setShared((p) => ({ ...p, tracking_number: e.target.value }))} placeholder="e.g. RR123456789SG" />
                 </div>
               )}
+              {(shared.status === "sold" || shared.status === "paid") && (
+                <div>
+                  <label className="flex items-center gap-2 text-[11px] mb-1.5" style={{ color: "#FAF7F2" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!shared.manual_delivered_at}
+                      onChange={(e) => setShared((p) => ({ ...p, manual_delivered_at: e.target.checked ? new Date().toISOString().slice(0, 10) : "" }))}
+                    />
+                    Mark as delivered manually
+                    <span className="opacity-50">— use this if tracking never updates (common for local Singapore deliveries)</span>
+                  </label>
+                  {shared.manual_delivered_at && (
+                    <Field label="Delivery date" value={shared.manual_delivered_at} onChange={(e) => setShared((p) => ({ ...p, manual_delivered_at: e.target.value }))} type="date" />
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1027,6 +1099,7 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
     shipping: order.shipping ?? "",
     courier: order.courier || "",
     tracking_number: order.tracking_number || "",
+    manual_delivered_at: order.manual_delivered_at || "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1056,6 +1129,7 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
         shipping: form.shipping === "" ? null : form.shipping,
         courier: form.courier || null,
         tracking_number: form.tracking_number || null,
+        manual_delivered_at: form.manual_delivered_at || null,
         updated_at: new Date().toISOString(),
       };
       const { error: orderErr } = await supabase.from("orders").update(payload).eq("id", order.id);
@@ -1108,6 +1182,22 @@ function OrderEditor({ order, onSaved, onCancel, onDeleted }) {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Courier" value={form.courier} onChange={(e) => setForm((p) => ({ ...p, courier: e.target.value }))} placeholder="e.g. SingPost, Aramex, FedEx" />
               <Field label="Tracking number" value={form.tracking_number} onChange={(e) => setForm((p) => ({ ...p, tracking_number: e.target.value }))} placeholder="e.g. RR123456789SG" />
+            </div>
+          )}
+          {(form.status === "sold" || form.status === "paid") && (
+            <div>
+              <label className="flex items-center gap-2 text-[11px] mb-1.5" style={{ color: "#FAF7F2" }}>
+                <input
+                  type="checkbox"
+                  checked={!!form.manual_delivered_at}
+                  onChange={(e) => setForm((p) => ({ ...p, manual_delivered_at: e.target.checked ? new Date().toISOString().slice(0, 10) : "" }))}
+                />
+                Mark as delivered manually
+                <span className="opacity-50">— use this if tracking never updates (common for local Singapore deliveries)</span>
+              </label>
+              {form.manual_delivered_at && (
+                <Field label="Delivery date" value={form.manual_delivered_at} onChange={(e) => setForm((p) => ({ ...p, manual_delivered_at: e.target.value }))} type="date" />
+              )}
             </div>
           )}
         </div>
